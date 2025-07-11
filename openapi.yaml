@@ -1,0 +1,6397 @@
+openapi: 3.0.3
+info:
+  title: Hi.Events - Complete API Documentation
+  description: |
+    **Hi.Events** is a comprehensive event management platform that provides APIs for creating, managing, and selling tickets for events.
+    
+    ## 🚀 Key Features
+    
+    - **Event Management**: Create and manage events with detailed settings
+    - **Ticket Sales**: Multiple product types, pricing tiers, and payment processing
+    - **Attendee Management**: Check-ins, communications, and reporting
+    - **Marketing Tools**: Promo codes, affiliates, and messaging
+    - **Analytics**: Comprehensive reporting and statistics
+    - **Integrations**: Webhooks, Stripe, and third-party services
+    
+    ## 🔐 Authentication
+    
+    **Two Authentication Methods:**
+    
+    1. **JWT Tokens** - For user sessions and full administrative access
+    2. **API Keys** - For programmatic access with limited scope
+    
+    ## 📱 Public API
+    
+    Many endpoints are publicly accessible for:
+    - Event discovery and registration
+    - Ticket purchasing workflow
+    - Check-in processes
+    - Public event information
+    
+    ## 🎯 Quick Start
+    
+    ### Event Registration Workflow
+    ```bash
+    # 1. Browse Events (API Key required)
+    curl -H "Authorization: Bearer YOUR_API_KEY" https://localhost:8443/api/events
+    
+    # 2. Get Event Products (Public)
+    curl https://localhost:8443/api/public/events/1/products
+    
+    # 3. Create Order (Public)
+    curl -X POST https://localhost:8443/api/public/events/1/order \
+      -d '{"products":[{"product_id":3,"quantities":[{"price_id":3,"quantity":1}]}]}'
+    
+    # 4. Complete Order (Public)
+    curl -X PUT https://localhost:8443/api/public/events/1/order/ORDER_ID \
+      -d '{"order":{"first_name":"John","last_name":"Doe","email":"john@example.com"}}'
+    ```
+    
+    ## 🏗️ Architecture
+    
+    - **Backend**: Laravel PHP framework
+    - **Authentication**: Laravel Sanctum (API keys) + JWT
+    - **Payment Processing**: Stripe integration
+    - **File Storage**: Local/cloud storage for images and documents
+    - **Real-time**: WebSocket support for live updates
+    
+    ## 📊 Rate Limiting
+    
+    - **Authenticated requests**: 1000 requests per minute
+    - **Public requests**: 60 requests per minute
+    - **Payment requests**: 10 requests per minute
+    
+    ## 🔧 Development Setup
+    
+    For local development with self-signed certificates, use the `-k` flag with curl.
+    
+  version: 2.0.0
+  contact:
+    name: Hi.Events Support
+    email: support@hi.events
+    url: https://hi.events
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://localhost:8443/api
+    description: Local Development Server
+  - url: https://api.hi.events
+    description: Production Server
+
+security:
+  - ApiKeyAuth: []
+  - JwtAuth: []
+  - {}
+
+paths:
+  # =============================================================================
+  # AUTHENTICATION & AUTHORIZATION
+  # =============================================================================
+  
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User Login
+      description: |
+        Authenticate a user with email and password to receive JWT tokens.
+        
+        **Returns:**
+        - Access token for API requests
+        - Refresh token for token renewal
+        - User account information
+        
+        **Use Cases:**
+        - Web application login
+        - Mobile app authentication
+        - Administrative dashboard access
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: "user@example.com"
+              password: "password123"
+              account_id: 1
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: User Registration
+      description: |
+        Register a new user account and create the initial account structure.
+        
+        **Features:**
+        - Creates user account
+        - Sets up initial organization
+        - Configures default settings
+        - Sends welcome email
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: User Logout
+      description: |
+        Logout the current user and invalidate the JWT token.
+        
+        **Security:**
+        - Invalidates current access token
+        - Clears server-side session
+        - Logs security event
+      operationId: logout
+      security:
+        - JwtAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh JWT Token
+      description: |
+        Refresh an expired or expiring JWT token using a refresh token.
+        
+        **Token Management:**
+        - Validates refresh token
+        - Issues new access token
+        - Optionally rotates refresh token
+      operationId: refreshToken
+      security:
+        - JwtAuth: []
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+
+  /auth/forgot-password:
+    post:
+      tags: [Authentication]
+      summary: Request Password Reset
+      description: |
+        Send a password reset email to the user's registered email address.
+        
+        **Process:**
+        - Validates email exists
+        - Generates secure reset token
+        - Sends email with reset link
+        - Token expires in 60 minutes
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "user@example.com"
+      responses:
+        '200':
+          description: Reset email sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /auth/reset-password/{reset_token}:
+    post:
+      tags: [Authentication]
+      summary: Reset Password
+      description: |
+        Reset user password using a valid reset token from email.
+        
+        **Security:**
+        - Validates reset token
+        - Enforces password strength
+        - Invalidates all existing sessions
+        - Logs security event
+      operationId: resetPassword
+      parameters:
+        - name: reset_token
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "abc123def456"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, password_confirmation]
+              properties:
+                password:
+                  type: string
+                  minLength: 8
+                  example: "newpassword123"
+                password_confirmation:
+                  type: string
+                  example: "newpassword123"
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # =============================================================================
+  # API KEY MANAGEMENT
+  # =============================================================================
+
+  /api-keys:
+    get:
+      tags: [API Keys]
+      summary: List API Keys
+      description: |
+        Retrieve all API keys for the authenticated user.
+        
+        **Information Included:**
+        - Token names and abilities
+        - Creation and expiration dates
+        - Usage statistics
+        - Last used timestamps
+        
+        **Security Note:** Actual token values are never returned.
+      operationId: getApiKeys
+      security:
+        - JwtAuth: []
+      responses:
+        '200':
+          description: API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKey'
+
+    post:
+      tags: [API Keys]
+      summary: Create API Key
+      description: |
+        Create a new API key with specified permissions and expiration.
+        
+        **Features:**
+        - Custom token names
+        - Granular permissions (abilities)
+        - Optional expiration dates
+        - Usage tracking
+        
+        **Important:** The actual token is only shown once during creation.
+      operationId: createApiKey
+      security:
+        - JwtAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApiKeyResponse'
+
+  /api-keys/{token_id}:
+    delete:
+      tags: [API Keys]
+      summary: Revoke API Key
+      description: |
+        Permanently revoke an API key, making it unusable for future requests.
+        
+        **Effects:**
+        - Immediately invalidates the token
+        - Stops all active requests using this token
+        - Cannot be undone
+        - Logs security event
+      operationId: revokeApiKey
+      security:
+        - JwtAuth: []
+      parameters:
+        - name: token_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 123
+      responses:
+        '204':
+          description: API key revoked successfully
+        '404':
+          description: API key not found
+
+  # =============================================================================
+  # EVENT MANAGEMENT
+  # =============================================================================
+
+  /events:
+    get:
+      tags: [Events]
+      summary: List Events
+      description: |
+        Retrieve a paginated list of events with filtering and sorting options.
+        
+        **Available Filters:**
+        - Event status (DRAFT, LIVE, ARCHIVED)
+        - Date ranges (start_date, end_date)
+        - Organizer
+        - Title search
+        
+        **Sorting Options:**
+        - Start/end dates
+        - Creation date
+        - Title alphabetical
+        - Last updated
+        
+        **Use Cases:**
+        - Event discovery for registration
+        - Administrative event management
+        - Analytics and reporting
+      operationId: getEvents
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/SortDirection'
+        - name: filter[title]
+          in: query
+          description: Filter by event title (partial match)
+          schema:
+            type: string
+            example: "conference"
+        - name: filter[status]
+          in: query
+          description: Filter by event status
+          schema:
+            type: string
+            enum: [DRAFT, LIVE, ARCHIVED]
+            example: LIVE
+        - name: filter[organizer_id]
+          in: query
+          description: Filter by organizer ID
+          schema:
+            type: integer
+            example: 1
+        - name: filter[start_date]
+          in: query
+          description: Filter events starting after this date
+          schema:
+            type: string
+            format: date
+            example: "2025-01-01"
+        - name: filter[end_date]
+          in: query
+          description: Filter events ending before this date
+          schema:
+            type: string
+            format: date
+            example: "2025-12-31"
+      responses:
+        '200':
+          description: Events retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventsListResponse'
+
+    post:
+      tags: [Events]
+      summary: Create Event
+      description: |
+        Create a new event with basic information and settings.
+        
+        **Required Information:**
+        - Event title and description
+        - Start and end dates
+        - Timezone and currency
+        - Organizer assignment
+        
+        **Optional Features:**
+        - Custom event settings
+        - Image uploads
+        - SEO configuration
+        - Payment provider setup
+        
+        **Post-Creation Steps:**
+        1. Add products/tickets
+        2. Configure event settings
+        3. Set up payment processing
+        4. Publish event
+      operationId: createEvent
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventRequest'
+          multipart/form-data:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/CreateEventRequest'
+                - type: object
+                  properties:
+                    images:
+                      type: array
+                      items:
+                        type: string
+                        format: binary
+      responses:
+        '201':
+          description: Event created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '422':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /events/{event_id}:
+    get:
+      tags: [Events]
+      summary: Get Event Details
+      description: |
+        Retrieve comprehensive details for a specific event.
+        
+        **Information Included:**
+        - Basic event information
+        - Settings and configuration
+        - Statistics and metrics
+        - Associated organizer
+        - Images and media
+        - Products/tickets overview
+        
+        **Access Control:**
+        - Event owners: Full access
+        - API keys: Read-only access
+        - Public: Limited information via public endpoints
+      operationId: getEvent
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: include
+          in: query
+          description: Include related data (comma-separated)
+          schema:
+            type: string
+            example: "organizer,statistics,products"
+      responses:
+        '200':
+          description: Event details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventDetailResponse'
+        '404':
+          description: Event not found
+
+    put:
+      tags: [Events]
+      summary: Update Event
+      description: |
+        Update event information and settings.
+        
+        **Updatable Fields:**
+        - Basic information (title, description, dates)
+        - Event settings and configuration
+        - SEO and marketing settings
+        - Image management
+        
+        **Restrictions:**
+        - Cannot change fundamental settings after tickets are sold
+        - Date changes may require attendee notification
+        - Some changes require event republishing
+      operationId: updateEvent
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEventRequest'
+      responses:
+        '200':
+          description: Event updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+
+    delete:
+      tags: [Events]
+      summary: Delete Event
+      description: |
+        Permanently delete an event and all associated data.
+        
+        **⚠️ WARNING: This action cannot be undone!**
+        
+        **What Gets Deleted:**
+        - Event information and settings
+        - All products/tickets
+        - Attendee records
+        - Order history
+        - Messages and communications
+        - Analytics data
+        
+        **Prerequisites:**
+        - No pending orders
+        - All refunds processed
+        - Organizer confirmation required
+      operationId: deleteEvent
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '204':
+          description: Event deleted successfully
+        '409':
+          description: Cannot delete event with active orders
+
+  /events/{event_id}/status:
+    put:
+      tags: [Events]
+      summary: Update Event Status
+      description: |
+        Change the publication status of an event.
+        
+        **Status Options:**
+        - **DRAFT**: Event is being prepared, not visible to public
+        - **LIVE**: Event is published and accepting registrations
+        - **ARCHIVED**: Event is completed, read-only mode
+        
+        **Status Transitions:**
+        - DRAFT → LIVE: Publishes event, starts ticket sales
+        - LIVE → ARCHIVED: Ends sales, preserves data
+        - ARCHIVED → LIVE: Reopens event (if end date allows)
+        
+        **Automated Status Changes:**
+        - Events automatically become LIVE at start date
+        - Events can auto-archive after end date
+      operationId: updateEventStatus
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [DRAFT, LIVE, ARCHIVED]
+                  example: "LIVE"
+                reason:
+                  type: string
+                  description: Optional reason for status change
+                  example: "Event ready for public registration"
+      responses:
+        '200':
+          description: Event status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+
+  /events/{event_id}/duplicate:
+    post:
+      tags: [Events]
+      summary: Duplicate Event
+      description: |
+        Create a copy of an existing event with customizable duplication options.
+        
+        **Duplication Options:**
+        - **Basic Info**: Title, description, settings
+        - **Products**: Tickets and pricing structure
+        - **Questions**: Custom registration questions
+        - **Webhooks**: Integration endpoints
+        - **Images**: Event photos and branding
+        
+        **What's NOT Duplicated:**
+        - Attendee data and registrations
+        - Order history and payments
+        - Messages and communications
+        - Analytics and statistics
+        
+        **Use Cases:**
+        - Recurring events (monthly meetups, annual conferences)
+        - Event templates and standardization
+        - A/B testing different configurations
+        - Regional event variations
+      operationId: duplicateEvent
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DuplicateEventRequest'
+      responses:
+        '201':
+          description: Event duplicated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+
+  # =============================================================================
+  # ATTENDEE MANAGEMENT
+  # =============================================================================
+
+  /events/{event_id}/attendees:
+    get:
+      tags: [Attendees]
+      summary: List Event Attendees
+      description: |
+        Retrieve a paginated list of attendees for an event with filtering and search.
+        
+        **Available Filters:**
+        - Check-in status
+        - Registration date range
+        - Product/ticket type
+        - Payment status
+        - Custom question answers
+        
+        **Search Capabilities:**
+        - Name search (first, last, or full name)
+        - Email address search
+        - Ticket reference search
+        - Phone number search
+        
+        **Export Options:**
+        - CSV export with custom fields
+        - Excel export with multiple sheets
+        - PDF attendee lists for printing
+        
+        **Privacy & Security:**
+        - PII access requires appropriate permissions
+        - Audit logging for data access
+        - GDPR compliance features
+      operationId: getAttendees
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Search'
+        - name: filter[checked_in]
+          in: query
+          description: Filter by check-in status
+          schema:
+            type: boolean
+            example: true
+        - name: filter[product_id]
+          in: query
+          description: Filter by product/ticket type
+          schema:
+            type: integer
+            example: 123
+        - name: filter[registration_date]
+          in: query
+          description: Filter by registration date range
+          schema:
+            type: string
+            format: date
+            example: "2025-01-01"
+        - name: include
+          in: query
+          description: Include related data
+          schema:
+            type: string
+            example: "order,product,check_ins"
+      responses:
+        '200':
+          description: Attendees retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendeesListResponse'
+
+    post:
+      tags: [Attendees]
+      summary: Create Manual Attendee Registration
+      description: |
+        Manually register an attendee for an event (admin/organizer only).
+        
+        **Use Cases:**
+        - Comp tickets and complimentary registrations
+        - VIP registrations and special guests
+        - Group registrations and bulk imports
+        - Walk-in registrations at the door
+        - Partner and sponsor attendees
+        
+        **Features:**
+        - Skip payment processing
+        - Custom pricing and discounts
+        - Administrative notes
+        - Automatic confirmation emails
+        - Integration with check-in systems
+        
+        **Data Requirements:**
+        - Basic attendee information
+        - Product/ticket selection
+        - Optional custom question responses
+        - Optional order holder information
+      operationId: createAttendee
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAttendeeRequest'
+      responses:
+        '201':
+          description: Attendee created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendeeResponse'
+
+  /events/{event_id}/attendees/{attendee_id}:
+    get:
+      tags: [Attendees]
+      summary: Get Attendee Details
+      description: |
+        Retrieve detailed information for a specific attendee.
+        
+        **Information Included:**
+        - Personal information and contact details
+        - Registration and ticket information
+        - Check-in history and timestamps
+        - Order and payment details
+        - Custom question responses
+        - Communication history
+        - Affiliate and promotional code usage
+        
+        **Privacy Considerations:**
+        - Full access for event organizers
+        - Limited access for API keys
+        - Attendee can access their own data
+        - Audit logging for PII access
+      operationId: getAttendee
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/AttendeeId'
+        - name: include
+          in: query
+          description: Include related data
+          schema:
+            type: string
+            example: "order,check_ins,messages"
+      responses:
+        '200':
+          description: Attendee details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendeeDetailResponse'
+
+    put:
+      tags: [Attendees]
+      summary: Update Attendee Information
+      description: |
+        Update attendee information and registration details.
+        
+        **Updatable Fields:**
+        - Personal information (name, email, phone)
+        - Custom question responses
+        - Administrative notes
+        - Special requirements or accommodations
+        
+        **Restricted Fields:**
+        - Cannot change ticket type after payment
+        - Cannot modify order-level information
+        - Some changes may require additional validation
+        
+        **Notifications:**
+        - Attendee receives email notification of changes
+        - Organizer approval may be required for certain changes
+        - Updated information reflects in check-in systems
+      operationId: updateAttendee
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/AttendeeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAttendeeRequest'
+      responses:
+        '200':
+          description: Attendee updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendeeResponse'
+
+    patch:
+      tags: [Attendees]
+      summary: Partially Update Attendee
+      description: |
+        Perform partial updates to attendee information using JSON Patch operations.
+        
+        **Supported Operations:**
+        - add: Add new fields or values
+        - replace: Update existing field values
+        - remove: Remove optional fields
+        
+        **Common Use Cases:**
+        - Update check-in status
+        - Add administrative notes
+        - Update contact information
+        - Modify dietary restrictions or special needs
+      operationId: partialUpdateAttendee
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/AttendeeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/JsonPatchOperation'
+      responses:
+        '200':
+          description: Attendee updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendeeResponse'
+
+    delete:
+      tags: [Attendees]
+      summary: Delete Attendee Registration
+      description: |
+        Cancel an attendee registration and handle associated cleanup.
+        
+        **⚠️ Important Considerations:**
+        - May trigger refund processing
+        - Frees up event capacity
+        - Removes from check-in lists
+        - Cancels associated communications
+        
+        **Refund Handling:**
+        - Automatic refund for eligible orders
+        - Manual refund processing for complex cases
+        - Refund policy enforcement
+        - Financial reconciliation
+        
+        **Data Retention:**
+        - Some data may be retained for compliance
+        - Analytics data may be anonymized
+        - Communication history may be preserved
+      operationId: deleteAttendee
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/AttendeeId'
+        - name: refund
+          in: query
+          description: Whether to process automatic refund
+          schema:
+            type: boolean
+            default: true
+        - name: reason
+          in: query
+          description: Reason for cancellation
+          schema:
+            type: string
+            example: "Requested by attendee"
+      responses:
+        '204':
+          description: Attendee registration cancelled successfully
+        '409':
+          description: Cannot cancel - event has already occurred
+
+  /events/{event_id}/attendees/export:
+    post:
+      tags: [Attendees]
+      summary: Export Attendees
+      description: |
+        Export attendee data in various formats with customizable field selection.
+        
+        **Export Formats:**
+        - **CSV**: Simple comma-separated values
+        - **Excel**: Multiple sheets with formatting
+        - **PDF**: Formatted attendee lists for printing
+        - **JSON**: Structured data for API integration
+        
+        **Customization Options:**
+        - Select specific fields to include
+        - Filter attendees by criteria
+        - Custom column headers and formatting
+        - Logo and branding inclusion (PDF)
+        
+        **Field Options:**
+        - Basic attendee information
+        - Registration and payment details
+        - Check-in status and timestamps
+        - Custom question responses
+        - Order and promotional information
+        
+        **Privacy & Compliance:**
+        - GDPR-compliant data export
+        - Audit logging for exports
+        - Permission-based field access
+        - Data anonymization options
+      operationId: exportAttendees
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportAttendeesRequest'
+      responses:
+        '200':
+          description: Export completed successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: "attachment; filename=attendees_export.csv"
+
+  /events/{event_id}/attendees/{attendee_public_id}/resend-ticket:
+    post:
+      tags: [Attendees]
+      summary: Resend Ticket Email
+      description: |
+        Resend the ticket confirmation email to an attendee.
+        
+        **Use Cases:**
+        - Lost email or spam folder issues
+        - Updated ticket information
+        - Additional attendee requests
+        - System error recovery
+        
+        **Email Contents:**
+        - Ticket confirmation details
+        - QR code for check-in
+        - Event information and directions
+        - Contact information
+        - Special instructions or updates
+        
+        **Rate Limiting:**
+        - Limited resends per attendee per day
+        - Prevents spam and abuse
+        - Tracks resend requests for auditing
+      operationId: resendAttendeeTicket
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: attendee_public_id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "A-ABC123"
+      responses:
+        '200':
+          description: Ticket email resent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /events/{event_id}/attendees/{attendee_public_id}/check_in:
+    post:
+      tags: [Attendees]
+      summary: Check In Attendee
+      description: |
+        Check in an attendee to the event or a specific session.
+        
+        **Check-in Methods:**
+        - QR code scanning
+        - Name-based search
+        - Ticket number lookup
+        - Badge scanning
+        
+        **Features:**
+        - Real-time check-in validation
+        - Duplicate check-in prevention
+        - Session-specific check-ins
+        - Offline check-in support
+        - Check-in analytics
+        
+        **Integration:**
+        - Badge printing systems
+        - Access control systems
+        - Real-time dashboards
+        - Mobile check-in apps
+      operationId: checkInAttendee
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: attendee_public_id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "A-ABC123"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                check_in_list_id:
+                  type: integer
+                  description: Specific check-in list/session
+                  example: 1
+                notes:
+                  type: string
+                  description: Optional check-in notes
+                  example: "Late arrival"
+                location:
+                  type: string
+                  description: Check-in location
+                  example: "Main entrance"
+      responses:
+        '200':
+          description: Attendee checked in successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInResponse'
+
+  # =============================================================================
+  # ORDER MANAGEMENT  
+  # =============================================================================
+
+  /events/{event_id}/orders:
+    get:
+      tags: [Orders]
+      summary: List Event Orders
+      description: |
+        Retrieve a paginated list of orders for an event with comprehensive filtering.
+        
+        **Available Filters:**
+        - Order status (PENDING, COMPLETED, CANCELLED, REFUNDED)
+        - Payment status (PAID, PENDING, FAILED)
+        - Date ranges (order date, payment date)
+        - Payment method and amount ranges
+        - Promotional codes and discounts
+        
+        **Search Capabilities:**
+        - Order reference numbers
+        - Customer name and email
+        - Transaction IDs
+        - Product names
+        
+        **Financial Information:**
+        - Revenue totals and breakdowns
+        - Tax and fee calculations
+        - Refund and cancellation data
+        - Payment gateway details
+        
+        **Use Cases:**
+        - Financial reporting and reconciliation
+        - Customer service and support
+        - Fraud detection and analysis
+        - Revenue optimization
+      operationId: getOrders
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Search'
+        - name: filter[status]
+          in: query
+          description: Filter by order status
+          schema:
+            type: string
+            enum: [PENDING, COMPLETED, CANCELLED, REFUNDED]
+        - name: filter[payment_status]
+          in: query
+          description: Filter by payment status
+          schema:
+            type: string
+            enum: [PAID, PENDING, FAILED]
+        - name: filter[date_from]
+          in: query
+          description: Filter orders from this date
+          schema:
+            type: string
+            format: date
+        - name: filter[date_to]
+          in: query
+          description: Filter orders to this date
+          schema:
+            type: string
+            format: date
+        - name: include
+          in: query
+          description: Include related data
+          schema:
+            type: string
+            example: "attendees,refunds,payments"
+      responses:
+        '200':
+          description: Orders retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdersListResponse'
+
+  /events/{event_id}/orders/{order_id}:
+    get:
+      tags: [Orders]
+      summary: Get Order Details
+      description: |
+        Retrieve comprehensive details for a specific order.
+        
+        **Information Included:**
+        - Complete order information and line items
+        - Customer and billing details
+        - Payment and transaction history
+        - Attendee information and allocations
+        - Promotional codes and discounts applied
+        - Refund and modification history
+        - Communication and email history
+        
+        **Financial Details:**
+        - Itemized pricing breakdown
+        - Tax calculations and jurisdictions
+        - Fee structures and payment processing costs
+        - Currency conversion (if applicable)
+        - Refund eligibility and amounts
+      operationId: getOrder
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/OrderId'
+        - name: include
+          in: query
+          description: Include related data
+          schema:
+            type: string
+            example: "attendees,payments,refunds,communications"
+      responses:
+        '200':
+          description: Order details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetailResponse'
+
+    put:
+      tags: [Orders]
+      summary: Update Order
+      description: |
+        Update order information and handle modifications.
+        
+        **Updatable Information:**
+        - Customer contact details
+        - Billing information
+        - Attendee assignments
+        - Special requests and notes
+        
+        **Modification Handling:**
+        - Quantity changes and pricing adjustments
+        - Product substitutions
+        - Refund processing for reductions
+        - Additional payment collection for increases
+        
+        **Business Rules:**
+        - Changes may require customer approval
+        - Price changes depend on event policy
+        - Some modifications may incur fees
+        - Availability constraints apply
+      operationId: updateOrder
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderRequest'
+      responses:
+        '200':
+          description: Order updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+
+  /events/{event_id}/orders/{order_id}/cancel:
+    post:
+      tags: [Orders]
+      summary: Cancel Order
+      description: |
+        Cancel an order and process associated refunds and cleanup.
+        
+        **Cancellation Process:**
+        - Validates cancellation eligibility
+        - Calculates refund amounts
+        - Processes payment reversals
+        - Updates inventory and capacity
+        - Notifies affected parties
+        
+        **Refund Processing:**
+        - Automatic refunds to original payment method
+        - Refund policy enforcement
+        - Partial refund calculations
+        - Fee handling and processing costs
+        
+        **Side Effects:**
+        - Attendee registrations cancelled
+        - Capacity freed for other customers
+        - Analytics and reporting updates
+        - Communication triggers
+      operationId: cancelOrder
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Reason for cancellation
+                  example: "Customer request"
+                refund_amount:
+                  type: number
+                  format: float
+                  description: Custom refund amount (if different from policy)
+                  example: 50.00
+                notify_customer:
+                  type: boolean
+                  description: Whether to send cancellation email
+                  default: true
+      responses:
+        '200':
+          description: Order cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderCancellationResponse'
+
+  /events/{event_id}/orders/{order_id}/refund:
+    post:
+      tags: [Orders]
+      summary: Process Order Refund
+      description: |
+        Process a full or partial refund for an order.
+        
+        **Refund Types:**
+        - **Full Refund**: Complete order cancellation
+        - **Partial Refund**: Specific items or custom amounts
+        - **Processing Fee Refund**: Include/exclude processing fees
+        - **Goodwill Refund**: Customer service refunds
+        
+        **Payment Processing:**
+        - Integration with payment gateways
+        - Multi-payment method support
+        - Currency conversion handling
+        - Refund status tracking
+        
+        **Financial Controls:**
+        - Refund authorization levels
+        - Maximum refund limits
+        - Audit trails and approvals
+        - Anti-fraud protections
+      operationId: refundOrder
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundOrderRequest'
+      responses:
+        '200':
+          description: Refund processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefundResponse'
+
+  /events/{event_id}/orders/{order_id}/mark-as-paid:
+    post:
+      tags: [Orders]
+      summary: Mark Order as Paid
+      description: |
+        Manually mark an order as paid (for offline payments or administrative purposes).
+        
+        **Use Cases:**
+        - Cash payments at events
+        - Bank transfers and checks
+        - Payment gateway failures
+        - Complementary registrations
+        - Administrative adjustments
+        
+        **Required Information:**
+        - Payment method and reference
+        - Payment amount and currency
+        - Transaction date and time
+        - Administrative notes
+        
+        **Effects:**
+        - Updates order status to PAID
+        - Confirms attendee registrations
+        - Triggers confirmation emails
+        - Updates financial reporting
+        - Enables check-in capabilities
+      operationId: markOrderAsPaid
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payment_method, amount]
+              properties:
+                payment_method:
+                  type: string
+                  enum: [CASH, BANK_TRANSFER, CHECK, COMPED, OTHER]
+                  example: "CASH"
+                amount:
+                  type: number
+                  format: float
+                  description: Payment amount received
+                  example: 150.00
+                reference:
+                  type: string
+                  description: Payment reference or transaction ID
+                  example: "CHECK-001234"
+                notes:
+                  type: string
+                  description: Administrative notes
+                  example: "Payment received at registration desk"
+                payment_date:
+                  type: string
+                  format: date-time
+                  description: When payment was received
+                  example: "2025-07-10T10:30:00Z"
+      responses:
+        '200':
+          description: Order marked as paid successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+
+  /events/{event_id}/orders/{order_id}/resend_confirmation:
+    post:
+      tags: [Orders]
+      summary: Resend Order Confirmation
+      description: |
+        Resend the order confirmation email to the customer.
+        
+        **Email Contents:**
+        - Order summary and receipt
+        - Attendee ticket information
+        - Event details and location
+        - Check-in instructions
+        - Contact information for support
+        
+        **Rate Limiting:**
+        - Maximum resends per order per day
+        - Prevents email spam and abuse
+        - Tracks resend requests for customer service
+      operationId: resendOrderConfirmation
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Confirmation email resent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /events/{event_id}/orders/{order_id}/message:
+    post:
+      tags: [Orders]
+      summary: Send Message to Order Customer
+      description: |
+        Send a custom message to the customer who placed an order.
+        
+        **Message Types:**
+        - Order updates and modifications
+        - Event changes and announcements
+        - Special instructions or requirements
+        - Customer service communications
+        - Promotional messages
+        
+        **Delivery Methods:**
+        - Email (primary method)
+        - SMS (if phone number available)
+        - In-app notifications
+        - Push notifications (mobile apps)
+        
+        **Templates and Personalization:**
+        - Pre-defined message templates
+        - Variable substitution (name, event, order details)
+        - Multilingual support
+        - Branding and customization
+      operationId: messageOrder
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '200':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /events/{event_id}/orders/{order_id}/invoice:
+    get:
+      tags: [Orders]
+      summary: Download Order Invoice
+      description: |
+        Generate and download a PDF invoice for an order.
+        
+        **Invoice Features:**
+        - Professional PDF formatting
+        - Company branding and logos
+        - Detailed line item breakdown
+        - Tax calculations and jurisdictions
+        - Payment terms and conditions
+        - Legal compliance information
+        
+        **Customization Options:**
+        - Invoice templates and themes
+        - Custom fields and information
+        - Multiple language support
+        - Currency and localization
+        
+        **Use Cases:**
+        - Customer receipt and records
+        - Accounting and bookkeeping
+        - Tax filing and compliance
+        - Expense reimbursement
+        - Business record keeping
+      operationId: downloadOrderInvoice
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Invoice generated successfully
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: "attachment; filename=invoice_ORDER123.pdf"
+
+  /events/{event_id}/orders/export:
+    post:
+      tags: [Orders]
+      summary: Export Orders
+      description: |
+        Export order data in various formats with customizable options.
+        
+        **Export Formats:**
+        - **CSV**: Simple data export for spreadsheets
+        - **Excel**: Formatted export with multiple sheets
+        - **PDF**: Printable order reports
+        - **JSON**: Structured data for integrations
+        
+        **Data Options:**
+        - Order summary information
+        - Detailed line items and pricing
+        - Customer and billing information
+        - Payment and transaction details
+        - Attendee allocations
+        - Financial summaries and totals
+        
+        **Filtering:**
+        - Date ranges and status filters
+        - Payment method and amount filters
+        - Product and promotional code filters
+        - Custom field selections
+        
+        **Privacy & Compliance:**
+        - GDPR-compliant exports
+        - Data anonymization options
+        - Access control and permissions
+        - Audit logging for exports
+      operationId: exportOrders
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportOrdersRequest'
+      responses:
+        '200':
+          description: Export completed successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: "attachment; filename=orders_export.csv"
+
+  # =============================================================================
+  # PRODUCT MANAGEMENT
+  # =============================================================================
+
+  /events/{event_id}/products:
+    get:
+      tags: [Products]
+      summary: List Event Products
+      description: |
+        Retrieve all products (tickets) available for an event.
+        
+        **Product Information:**
+        - Product types and categories
+        - Pricing tiers and structures
+        - Availability and inventory
+        - Sale periods and restrictions
+        - Tax and fee configurations
+        
+        **Pricing Features:**
+        - Multiple price points per product
+        - Early bird and late pricing
+        - Group discounts and bulk pricing
+        - Dynamic pricing capabilities
+        - Currency-specific pricing
+        
+        **Availability Management:**
+        - Total capacity and remaining inventory
+        - Sale start and end dates
+        - Per-order quantity limits
+        - Real-time availability updates
+        
+        **Access Control:**
+        - Public visibility settings
+        - Restricted access products
+        - Member-only pricing
+        - Invitation-only products
+      operationId: getProducts
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: include_hidden
+          in: query
+          description: Include hidden products (admin only)
+          schema:
+            type: boolean
+            default: false
+        - name: category_id
+          in: query
+          description: Filter by product category
+          schema:
+            type: integer
+        - name: include
+          in: query
+          description: Include related data
+          schema:
+            type: string
+            example: "prices,category,statistics"
+      responses:
+        '200':
+          description: Products retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductsListResponse'
+
+    post:
+      tags: [Products]
+      summary: Create Product
+      description: |
+        Create a new product (ticket type) for an event.
+        
+        **Product Types:**
+        - **FREE**: No charge products for general admission
+        - **PAID**: Standard paid tickets with fixed pricing
+        - **DONATION**: Pay-what-you-want products
+        - **MEMBERSHIP**: Recurring or subscription-based access
+        
+        **Pricing Configuration:**
+        - Base price and currency
+        - Multiple pricing tiers
+        - Early bird and promotional pricing
+        - Group rates and bulk discounts
+        - Tax and fee structures
+        
+        **Availability Settings:**
+        - Total quantity available
+        - Per-order purchase limits
+        - Sale start and end dates
+        - Visibility and access controls
+        
+        **Advanced Features:**
+        - Product dependencies and bundles
+        - Capacity assignments and allocations
+        - Custom questions and data collection
+        - Integration with external systems
+      operationId: createProduct
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '201':
+          description: Product created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+
+  /events/{event_id}/products/{product_id}:
+    get:
+      tags: [Products]
+      summary: Get Product Details
+      description: |
+        Retrieve detailed information for a specific product.
+        
+        **Detailed Information:**
+        - Complete product configuration
+        - All pricing tiers and options
+        - Real-time availability status
+        - Sales statistics and performance
+        - Associated questions and requirements
+        - Integration and webhook settings
+        
+        **Analytics Data:**
+        - Sales velocity and trends
+        - Conversion rates by traffic source
+        - Pricing effectiveness analysis
+        - Customer behavior insights
+        - Revenue attribution data
+      operationId: getProduct
+      security:
+        - ApiKeyAuth: []
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/ProductId'
+        - name: include
+          in: query
+          description: Include related data
+          schema:
+            type: string
+            example: "prices,category,questions,statistics"
+      responses:
+        '200':
+          description: Product details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetailResponse'
+
+    put:
+      tags: [Products]
+      summary: Update Product
+      description: |
+        Update product information and configuration.
+        
+        **Updatable Fields:**
+        - Product name and description
+        - Pricing and availability
+        - Sale periods and restrictions
+        - Visibility and access settings
+        - Associated questions and requirements
+        
+        **Change Restrictions:**
+        - Cannot modify products with active sales
+        - Price increases may require customer notification
+        - Capacity reductions must consider existing sales
+        - Major changes may require republishing
+        
+        **Impact Analysis:**
+        - Existing order compatibility
+        - Customer communication requirements
+        - Financial reconciliation needs
+        - Inventory and capacity adjustments
+      operationId: updateProduct
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductRequest'
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+
+    delete:
+      tags: [Products]
+      summary: Delete Product
+      description: |
+        Remove a product from the event (if no sales have occurred).
+        
+        **Deletion Requirements:**
+        - No completed orders for this product
+        - No pending orders in checkout
+        - No affiliate or promotional dependencies
+        - Organizer confirmation required
+        
+        **Alternative Actions:**
+        - Hide product instead of deletion
+        - Archive product for historical records
+        - Redirect to alternative products
+        - Refund existing orders if necessary
+        
+        **Impact Assessment:**
+        - Effect on event capacity
+        - Customer communication needs
+        - Financial implications
+        - Marketing and promotion updates
+      operationId: deleteProduct
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '204':
+          description: Product deleted successfully
+        '409':
+          description: Cannot delete product with existing orders
+
+  /events/{event_id}/products/sort:
+    post:
+      tags: [Products]
+      summary: Reorder Products
+      description: |
+        Update the display order of products for an event.
+        
+        **Sorting Features:**
+        - Drag-and-drop ordering support
+        - Category-based grouping
+        - Priority-based positioning
+        - Custom sorting criteria
+        
+        **Display Impact:**
+        - Public event page ordering
+        - Checkout flow presentation
+        - Mobile app display
+        - Widget and embed ordering
+        
+        **Best Practices:**
+        - Popular products first
+        - Logical price progression
+        - Category groupings
+        - Seasonal or time-based ordering
+      operationId: sortProducts
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_orders]
+              properties:
+                product_orders:
+                  type: array
+                  items:
+                    type: object
+                    required: [product_id, order]
+                    properties:
+                      product_id:
+                        type: integer
+                        example: 123
+                      order:
+                        type: integer
+                        example: 1
+      responses:
+        '200':
+          description: Products reordered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # =============================================================================
+  # USER MANAGEMENT
+  # =============================================================================
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get Current User Profile
+      description: |
+        Retrieve the profile information for the currently authenticated user.
+        
+        **Profile Information:**
+        - Basic user details (name, email, phone)
+        - Account preferences and settings
+        - Role and permission information
+        - Timezone and locale preferences
+        - Avatar and profile customization
+        - Security and privacy settings
+        
+        **Activity Data:**
+        - Recent login history
+        - Account creation date
+        - Email verification status
+        - Two-factor authentication status
+        - Active sessions and devices
+        
+        **Subscription & Billing:**
+        - Account plan and features
+        - Billing information and history
+        - Usage statistics and limits
+        - Renewal and payment status
+      operationId: getCurrentUser
+      security:
+        - JwtAuth: []
+      responses:
+        '200':
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+
+    put:
+      tags: [Users]
+      summary: Update Current User Profile
+      description: |
+        Update the profile information for the currently authenticated user.
+        
+        **Updatable Fields:**
+        - Personal information (name, phone, timezone)
+        - Email address (requires verification)
+        - Password (requires current password)
+        - Preferences and settings
+        - Privacy and notification settings
+        
+        **Security Features:**
+        - Current password verification for sensitive changes
+        - Email verification for email changes
+        - Audit logging for profile modifications
+        - Rate limiting for security-sensitive operations
+        
+        **Validation Rules:**
+        - Strong password requirements
+        - Email format and domain validation
+        - Phone number format verification
+        - Timezone and locale validation
+      operationId: updateCurrentUser
+      security:
+        - JwtAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserProfileRequest'
+      responses:
+        '200':
+          description: User profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List Users (Admin)
+      description: |
+        Retrieve a list of users within the organization (admin access required).
+        
+        **Admin Features:**
+        - Complete user directory
+        - Role and permission management
+        - Activity and usage monitoring
+        - Security and compliance oversight
+        
+        **Filtering Options:**
+        - Role-based filtering
+        - Activity status (active, inactive, suspended)
+        - Registration date ranges
+        - Email verification status
+        - Account plan and features
+        
+        **User Information:**
+        - Basic profile information
+        - Role assignments and permissions
+        - Last login and activity data
+        - Account status and restrictions
+        - Associated events and organizations
+        
+        **Privacy Controls:**
+        - GDPR compliance features
+        - Data access logging
+        - Permission-based field visibility
+        - User consent management
+      operationId: getUsers
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Search'
+        - name: filter[role]
+          in: query
+          description: Filter by user role
+          schema:
+            type: string
+            enum: [ADMIN, ORGANIZER, USER]
+        - name: filter[status]
+          in: query
+          description: Filter by account status
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, SUSPENDED]
+        - name: filter[verified]
+          in: query
+          description: Filter by email verification status
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsersListResponse'
+
+    post:
+      tags: [Users]
+      summary: Create User (Admin)
+      description: |
+        Create a new user account within the organization (admin access required).
+        
+        **User Creation Process:**
+        - Generate secure temporary password
+        - Send invitation email with setup link
+        - Configure initial role and permissions
+        - Set up account defaults and preferences
+        - Enable audit logging and compliance tracking
+        
+        **Required Information:**
+        - Email address (must be unique)
+        - Full name and basic details
+        - Role assignment and permissions
+        - Account configuration and settings
+        
+        **Optional Features:**
+        - Custom onboarding workflows
+        - Team and department assignments
+        - Resource access and restrictions
+        - Notification and communication preferences
+        
+        **Security Considerations:**
+        - Email domain validation
+        - Role-based access controls
+        - Invitation expiration policies
+        - Password strength requirements
+      operationId: createUser
+      security:
+        - JwtAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+  /users/{user_id}:
+    get:
+      tags: [Users]
+      summary: Get User Details (Admin)
+      description: |
+        Retrieve detailed information for a specific user (admin access required).
+        
+        **Comprehensive User Data:**
+        - Complete profile and contact information
+        - Role assignments and permission details
+        - Account history and activity logs
+        - Associated events and organizations
+        - Security settings and authentication methods
+        - Billing and subscription information
+        
+        **Activity Monitoring:**
+        - Login history and session data
+        - API usage and access patterns
+        - Event creation and management activity
+        - Communication and support interactions
+        - Financial transactions and payments
+        
+        **Compliance & Privacy:**
+        - GDPR data processing records
+        - Consent management and preferences
+        - Data retention and deletion schedules
+        - Privacy policy acknowledgments
+        - Legal and regulatory compliance status
+      operationId: getUser
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: include
+          in: query
+          description: Include related data
+          schema:
+            type: string
+            example: "roles,events,activity,billing"
+      responses:
+        '200':
+          description: User details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetailResponse'
+
+    put:
+      tags: [Users]
+      summary: Update User (Admin)
+      description: |
+        Update user information and account settings (admin access required).
+        
+        **Administrative Controls:**
+        - Role and permission management
+        - Account status modifications
+        - Security setting overrides
+        - Billing and subscription changes
+        - Feature access and restrictions
+        
+        **Bulk Operations:**
+        - Multiple user updates
+        - Role assignment changes
+        - Account status modifications
+        - Permission policy updates
+        - Configuration standardization
+        
+        **Change Management:**
+        - Audit trail for all modifications
+        - Approval workflows for sensitive changes
+        - Rollback capabilities for reversions
+        - Notification systems for affected users
+        - Compliance documentation and reporting
+        
+        **Security Safeguards:**
+        - Multi-factor authentication for admin changes
+        - Change approval requirements
+        - Risk assessment and validation
+        - Fraud prevention and monitoring
+        - Emergency account controls
+      operationId: updateUser
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+  # =============================================================================
+  # PUBLIC API ENDPOINTS
+  # =============================================================================
+
+  /public/events/{event_id}:
+    get:
+      tags: [Public API]
+      summary: Get Public Event Information
+      description: |
+        Retrieve public information about an event for display and registration purposes.
+        
+        **Public Information Includes:**
+        - Event title, description, and details
+        - Date, time, and location information
+        - Organizer information and contact details
+        - Available products and pricing
+        - Event images and media
+        - Public settings and configurations
+        
+        **Use Cases:**
+        - Event listing and discovery pages
+        - Registration and checkout flows
+        - Social media sharing and promotion
+        - Third-party integrations and widgets
+        - Mobile applications and web embedding
+        
+        **Privacy & Security:**
+        - Only publicly visible information
+        - No sensitive financial or admin data
+        - Rate limiting for public access
+        - CORS support for web integration
+        - Analytics and tracking support
+      operationId: getPublicEvent
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: include
+          in: query
+          description: Include related public data
+          schema:
+            type: string
+            example: "organizer,products,images"
+      responses:
+        '200':
+          description: Public event information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicEventResponse'
+        '404':
+          description: Event not found or not public
+
+  /public/events/{event_id}/products:
+    get:
+      tags: [Public API]
+      summary: Get Public Event Products
+      description: |
+        Retrieve publicly available products (tickets) for an event.
+        
+        **Product Information:**
+        - Product categories and organization
+        - Available products and descriptions
+        - Current pricing and availability
+        - Purchase limits and restrictions
+        - Sale periods and deadlines
+        
+        **Real-time Data:**
+        - Current inventory levels
+        - Dynamic pricing updates
+        - Promotional pricing active
+        - Availability status changes
+        - Capacity utilization
+        
+        **Integration Features:**
+        - CORS support for web widgets
+        - JSON-P callback support
+        - Mobile-optimized responses
+        - Caching headers for performance
+        - Error handling for unavailable products
+      operationId: getPublicEventProducts
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Public event products retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicEventProductsResponse'
+
+  /public/events/{event_id}/order:
+    post:
+      tags: [Public API]
+      summary: Create Public Order
+      description: |
+        Create a new order for public event registration (first step of checkout).
+        
+        **Order Creation Process:**
+        1. **Product Selection**: Specify products and quantities
+        2. **Availability Check**: Verify inventory and capacity
+        3. **Pricing Calculation**: Apply promotions and calculate totals
+        4. **Reservation Hold**: Create temporary order reservation
+        5. **Session Management**: Establish checkout session
+        
+        **Supported Features:**
+        - Multiple product types in single order
+        - Promotional code application
+        - Dynamic pricing and discounts
+        - Inventory management and allocation
+        - Session-based order tracking
+        
+        **Business Rules:**
+        - Minimum and maximum quantity enforcement
+        - Product combination restrictions
+        - Capacity and availability validation
+        - Pricing policy application
+        - Fraud prevention and security checks
+        
+        **Next Steps:**
+        After order creation, use the returned `short_id` to complete the order
+        with attendee information and payment processing.
+      operationId: createPublicOrder
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePublicOrderRequest'
+            example:
+              products:
+                - product_id: 3
+                  quantities:
+                    - price_id: 3
+                      quantity: 2
+              promo_code: "EARLYBIRD25"
+      responses:
+        '201':
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePublicOrderResponse'
+        '422':
+          description: Validation failed or products unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /public/events/{event_id}/order/{order_short_id}:
+    get:
+      tags: [Public API]
+      summary: Get Public Order Status
+      description: |
+        Retrieve the current status and details of a public order.
+        
+        **Order Information:**
+        - Current order status and progress
+        - Product details and quantities
+        - Pricing breakdown and totals
+        - Payment status and requirements
+        - Attendee allocation and assignments
+        - Order expiration and time limits
+        
+        **Status Tracking:**
+        - **RESERVED**: Order created, awaiting completion
+        - **COMPLETED**: Order finalized, payment processed
+        - **EXPIRED**: Order timed out, reservation released
+        - **CANCELLED**: Order cancelled by customer or system
+        
+        **Use Cases:**
+        - Checkout progress tracking
+        - Order confirmation and receipt display
+        - Customer service and support
+        - Payment status verification
+        - Attendee information management
+      operationId: getPublicOrder
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: order_short_id
+          in: path
+          required: true
+          description: Short ID of the order from creation
+          schema:
+            type: string
+            example: "o_4WWzp2nNQyjjI"
+        - name: include
+          in: query
+          description: Include related data
+          schema:
+            type: string
+            example: "attendees,payments,refunds"
+      responses:
+        '200':
+          description: Order status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicOrderResponse'
+        '404':
+          description: Order not found or expired
+
+    put:
+      tags: [Public API]
+      summary: Complete Public Order
+      description: |
+        Complete a public order by providing attendee information and processing payment.
+        
+        **Completion Process:**
+        1. **Attendee Information**: Collect required attendee details
+        2. **Data Validation**: Verify all required information
+        3. **Payment Processing**: Handle payment method and transactions
+        4. **Order Finalization**: Confirm order and issue tickets
+        5. **Notifications**: Send confirmations and receipts
+        
+        **Required Information:**
+        - **Order Holder**: Contact information for order
+        - **Attendees**: Details for each ticket/attendee
+        - **Payment**: Payment method and processing
+        - **Questions**: Custom registration questions
+        - **Agreements**: Terms and conditions acceptance
+        
+        **Payment Methods:**
+        - **Credit/Debit Cards**: Via Stripe integration
+        - **PayPal**: Direct PayPal processing
+        - **Bank Transfer**: For offline payment processing
+        - **Cryptocurrency**: If enabled for event
+        - **Free Orders**: No payment required
+        
+        **Validation Rules:**
+        - Required field completion
+        - Email format and validation
+        - Phone number format verification
+        - Custom question response validation
+        - Terms and conditions acceptance
+        
+        **Post-Completion:**
+        - Confirmation emails sent to attendees
+        - Tickets generated with QR codes
+        - Calendar invites and reminders
+        - Check-in system activation
+        - Analytics and reporting updates
+      operationId: completePublicOrder
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: order_short_id
+          in: path
+          required: true
+          description: Short ID of the order from creation
+          schema:
+            type: string
+            example: "o_4WWzp2nNQyjjI"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompletePublicOrderRequest'
+            example:
+              order:
+                first_name: "John"
+                last_name: "Doe"
+                email: "john.doe@example.com"
+                phone: "+1-555-123-4567"
+                address:
+                  address_line_1: "123 Main St"
+                  city: "New York"
+                  state: "NY"
+                  zip: "10001"
+                  country: "US"
+              products:
+                - product_id: 3
+                  product_price_id: 3
+                  quantity: 2
+                  attendees:
+                    - first_name: "John"
+                      last_name: "Doe"
+                      email: "john.doe@example.com"
+                      questions:
+                        - question_id: 1
+                          answer: "No dietary restrictions"
+                    - first_name: "Jane"
+                      last_name: "Doe"
+                      email: "jane.doe@example.com"
+                      questions:
+                        - question_id: 1
+                          answer: "Vegetarian"
+              payment:
+                method: "stripe"
+                stripe_payment_intent_id: "pi_1234567890"
+      responses:
+        '200':
+          description: Order completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompletePublicOrderResponse'
+        '400':
+          description: Validation failed or payment processing error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+# =============================================================================
+# COMPONENTS & SCHEMAS
+# =============================================================================
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+      description: |
+        API key authentication using Bearer token format.
+        
+        **Format:** `Bearer {your_api_key}`
+        
+        **Example:** `Bearer 1|DBhrdNsgpn46IlYEwn4WdMhuhkR9eOMh30xTbQBBe5b9a2d7`
+        
+        **Obtaining API Keys:**
+        1. Login to Hi.Events dashboard
+        2. Navigate to Settings → API Keys
+        3. Create new API key with required permissions
+        4. Copy the generated token (shown only once)
+        
+        **Permissions:**
+        - Read-only access to events and data
+        - Limited write access for registrations
+        - No access to sensitive administrative functions
+
+    JwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token authentication for full platform access.
+        
+        **Format:** `Bearer {jwt_token}`
+        
+        **Obtaining JWT Tokens:**
+        1. Use `/auth/login` endpoint with credentials
+        2. Receive access and refresh tokens
+        3. Use access token for API requests
+        4. Refresh when tokens expire
+        
+        **Permissions:**
+        - Full administrative access
+        - Complete CRUD operations
+        - User and account management
+        - Financial and sensitive data access
+
+  parameters:
+    EventId:
+      name: event_id
+      in: path
+      required: true
+      description: Unique identifier for the event
+      schema:
+        type: integer
+        example: 1
+
+    AttendeeId:
+      name: attendee_id
+      in: path
+      required: true
+      description: Unique identifier for the attendee
+      schema:
+        type: integer
+        example: 123
+
+    OrderId:
+      name: order_id
+      in: path
+      required: true
+      description: Unique identifier for the order
+      schema:
+        type: integer
+        example: 456
+
+    ProductId:
+      name: product_id
+      in: path
+      required: true
+      description: Unique identifier for the product
+      schema:
+        type: integer
+        example: 789
+
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      description: Unique identifier for the user
+      schema:
+        type: integer
+        example: 42
+
+    Page:
+      name: page
+      in: query
+      description: Page number for pagination
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+        example: 1
+
+    PerPage:
+      name: per_page
+      in: query
+      description: Number of items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+        example: 25
+
+    Search:
+      name: search
+      in: query
+      description: Search term for filtering results
+      schema:
+        type: string
+        example: "conference"
+
+    Sort:
+      name: sort
+      in: query
+      description: Field to sort by
+      schema:
+        type: string
+        example: "created_at"
+
+    SortDirection:
+      name: sort_direction
+      in: query
+      description: Sort direction
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+        example: "desc"
+
+  schemas:
+    # Authentication Schemas
+    LoginRequest:
+      type: object
+      required: [email, password, account_id]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          minLength: 8
+          example: "password123"
+        account_id:
+          type: integer
+          example: 1
+
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+        refresh_token:
+          type: string
+          example: "def50200abc123..."
+        token_type:
+          type: string
+          example: "Bearer"
+        expires_in:
+          type: integer
+          example: 3600
+        user:
+          $ref: '#/components/schemas/User'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+
+    RegisterRequest:
+      type: object
+      required: [first_name, last_name, email, password, organization_name]
+      properties:
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        password:
+          type: string
+          minLength: 8
+          example: "securepassword123"
+        password_confirmation:
+          type: string
+          example: "securepassword123"
+        organization_name:
+          type: string
+          example: "ACME Events"
+        timezone:
+          type: string
+          example: "America/New_York"
+        currency:
+          type: string
+          example: "USD"
+
+    RegisterResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Registration successful"
+        user:
+          $ref: '#/components/schemas/User'
+        account:
+          $ref: '#/components/schemas/Account'
+
+    # API Key Schemas
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123
+        name:
+          type: string
+          example: "Mobile App Integration"
+        abilities:
+          type: array
+          items:
+            type: string
+          example: ["events:read", "orders:create"]
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-01-15T10:30:00Z"
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-01-15T00:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+
+    CreateApiKeyRequest:
+      type: object
+      required: [token_name]
+      properties:
+        token_name:
+          type: string
+          example: "Mobile App Integration"
+        abilities:
+          type: array
+          items:
+            type: string
+          example: ["events:read", "orders:create"]
+          default: ["*"]
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-01-15T00:00:00Z"
+
+    CreateApiKeyResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "1|DBhrdNsgpn46IlYEwn4WdMhuhkR9eOMh30xTbQBBe5b9a2d7"
+          description: "The actual API key - only shown once!"
+        api_key:
+          $ref: '#/components/schemas/ApiKey'
+
+    # Event Schemas
+    EventsListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventSummary'
+        links:
+          $ref: '#/components/schemas/PaginationLinks'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    EventSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: "Tech Conference 2025"
+        description:
+          type: string
+          example: "<p>Join us for an amazing tech conference</p>"
+        description_preview:
+          type: string
+          example: "Join us for an amazing tech conference"
+        start_date:
+          type: string
+          format: date-time
+          example: "2025-07-15T09:00:00Z"
+        end_date:
+          type: string
+          format: date-time
+          example: "2025-07-15T18:00:00Z"
+        status:
+          type: string
+          enum: [DRAFT, LIVE, ARCHIVED]
+          example: "LIVE"
+        lifecycle_status:
+          type: string
+          enum: [UPCOMING, ONGOING, ENDED]
+          example: "UPCOMING"
+        currency:
+          type: string
+          example: "USD"
+        timezone:
+          type: string
+          example: "America/New_York"
+        slug:
+          type: string
+          example: "tech-conference-2025"
+        images:
+          type: array
+          items:
+            type: string
+          example: []
+        organizer:
+          $ref: '#/components/schemas/Organizer'
+        statistics:
+          $ref: '#/components/schemas/EventStatistics'
+
+    CreateEventRequest:
+      type: object
+      required: [title, start_date, end_date, timezone, currency, organizer_id]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+          example: "Tech Conference 2025"
+        description:
+          type: string
+          example: "<p>Join us for an amazing tech conference with industry leaders.</p>"
+        start_date:
+          type: string
+          format: date-time
+          example: "2025-07-15T09:00:00Z"
+        end_date:
+          type: string
+          format: date-time
+          example: "2025-07-15T18:00:00Z"
+        timezone:
+          type: string
+          example: "America/New_York"
+        currency:
+          type: string
+          example: "USD"
+        organizer_id:
+          type: integer
+          example: 1
+        location_details:
+          type: string
+          nullable: true
+          example: "123 Conference Center, Tech City"
+        is_online_event:
+          type: boolean
+          default: false
+          example: false
+        online_event_connection_details:
+          type: string
+          nullable: true
+          example: "Join via Zoom: https://zoom.us/j/123456789"
+        settings:
+          $ref: '#/components/schemas/EventSettingsInput'
+
+    EventSettingsInput:
+      type: object
+      properties:
+        support_email:
+          type: string
+          format: email
+          example: "support@techconf.com"
+        order_timeout_in_minutes:
+          type: integer
+          default: 15
+          example: 15
+        required_attendee_details:
+          type: boolean
+          default: true
+          example: true
+        homepage_background_color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: "#ffffff"
+        homepage_primary_color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: "#007bff"
+
+    # User and Account Schemas
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 42
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-123-4567"
+        timezone:
+          type: string
+          example: "America/New_York"
+        locale:
+          type: string
+          example: "en"
+        email_verified_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-01-01T12:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+
+    Account:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "ACME Events"
+        currency:
+          type: string
+          example: "USD"
+        timezone:
+          type: string
+          example: "America/New_York"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+
+    Organizer:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Tech Events Inc"
+        email:
+          type: string
+          format: email
+          example: "contact@techevents.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-987-6543"
+        website:
+          type: string
+          nullable: true
+          example: "https://techevents.com"
+        description:
+          type: string
+          nullable: true
+          example: "Leading tech event organizer"
+
+    EventStatistics:
+      type: object
+      properties:
+        unique_views:
+          type: integer
+          example: 1250
+        total_views:
+          type: integer
+          example: 2100
+        sales_total_gross:
+          type: number
+          format: float
+          example: 15750.00
+        total_tax:
+          type: number
+          format: float
+          example: 1260.00
+        sales_total_before_additions:
+          type: number
+          format: float
+          example: 14490.00
+        total_fee:
+          type: number
+          format: float
+          example: 472.50
+        products_sold:
+          type: integer
+          example: 150
+        attendees_registered:
+          type: integer
+          example: 145
+        total_refunded:
+          type: number
+          format: float
+          example: 500.00
+
+    # Pagination Schemas
+    PaginationLinks:
+      type: object
+      properties:
+        first:
+          type: string
+          example: "https://api.hi.events/events?page=1"
+        last:
+          type: string
+          example: "https://api.hi.events/events?page=10"
+        prev:
+          type: string
+          nullable: true
+          example: "https://api.hi.events/events?page=1"
+        next:
+          type: string
+          nullable: true
+          example: "https://api.hi.events/events?page=3"
+
+    PaginationMeta:
+      type: object
+      properties:
+        current_page:
+          type: integer
+          example: 2
+        from:
+          type: integer
+          example: 26
+        last_page:
+          type: integer
+          example: 10
+        per_page:
+          type: integer
+          example: 25
+        to:
+          type: integer
+          example: 50
+        total:
+          type: integer
+          example: 247
+        path:
+          type: string
+          example: "https://api.hi.events/events"
+
+    # Order Schemas
+    CreatePublicOrderRequest:
+      type: object
+      required: [products]
+      properties:
+        products:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [product_id, quantities]
+            properties:
+              product_id:
+                type: integer
+                example: 3
+              quantities:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+                  required: [price_id, quantity]
+                  properties:
+                    price_id:
+                      type: integer
+                      example: 3
+                    quantity:
+                      type: integer
+                      minimum: 1
+                      example: 2
+        promo_code:
+          type: string
+          nullable: true
+          example: "EARLYBIRD25"
+
+    CompletePublicOrderRequest:
+      type: object
+      required: [order, products]
+      properties:
+        order:
+          type: object
+          required: [first_name, last_name, email]
+          properties:
+            first_name:
+              type: string
+              example: "John"
+            last_name:
+              type: string
+              example: "Doe"
+            email:
+              type: string
+              format: email
+              example: "john.doe@example.com"
+            phone:
+              type: string
+              nullable: true
+              example: "+1-555-123-4567"
+            address:
+              $ref: '#/components/schemas/Address'
+        products:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [product_id, product_price_id, quantity, attendees]
+            properties:
+              product_id:
+                type: integer
+                example: 3
+              product_price_id:
+                type: integer
+                example: 3
+              quantity:
+                type: integer
+                minimum: 1
+                example: 2
+              attendees:
+                type: array
+                minItems: 1
+                items:
+                  $ref: '#/components/schemas/AttendeeInput'
+
+    AttendeeInput:
+      type: object
+      required: [first_name, last_name, email]
+      properties:
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-123-4567"
+        questions:
+          type: array
+          items:
+            type: object
+            required: [question_id, answer]
+            properties:
+              question_id:
+                type: integer
+                example: 1
+              answer:
+                type: string
+                example: "No dietary restrictions"
+
+    Address:
+      type: object
+      properties:
+        address_line_1:
+          type: string
+          example: "123 Main Street"
+        address_line_2:
+          type: string
+          nullable: true
+          example: "Apartment 4B"
+        city:
+          type: string
+          example: "New York"
+        state:
+          type: string
+          example: "NY"
+        zip:
+          type: string
+          example: "10001"
+        country:
+          type: string
+          example: "US"
+
+    # Utility Schemas
+    JsonPatchOperation:
+      type: object
+      required: [op, path]
+      properties:
+        op:
+          type: string
+          enum: [add, remove, replace, move, copy, test]
+          example: "replace"
+        path:
+          type: string
+          example: "/email"
+        value:
+          anyOf:
+            - type: string
+            - type: number
+            - type: boolean
+            - type: object
+            - type: array
+          example: "newemail@example.com"
+        from:
+          type: string
+          description: Required for move and copy operations
+          example: "/old_email"
+
+    # Response Schemas
+    SuccessResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Operation completed successfully"
+        data:
+          type: object
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "An error occurred"
+        error_code:
+          type: string
+          nullable: true
+          example: "VALIDATION_FAILED"
+        details:
+          type: object
+          nullable: true
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "The given data was invalid."
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            email: ["The email field is required."]
+            password: ["The password must be at least 8 characters."]
+
+    # Placeholder schemas for endpoints not fully detailed
+    EventResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/EventSummary'
+
+    EventDetailResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/EventSummary'
+            - type: object
+              properties:
+                settings:
+                  type: object
+                products:
+                  type: array
+                  items:
+                    type: object
+
+    AttendeesListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        links:
+          $ref: '#/components/schemas/PaginationLinks'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    OrdersListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderSummary'
+        links:
+          $ref: '#/components/schemas/PaginationLinks'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    OrderSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 456
+        short_id:
+          type: string
+          example: "o_4WWzp2nNQyjjI"
+        public_id:
+          type: string
+          example: "O-GAIAVHF"
+        status:
+          type: string
+          enum: [RESERVED, COMPLETED, CANCELLED, REFUNDED, AWAITING_PAYMENT]
+          example: "COMPLETED"
+        payment_status:
+          type: string
+          enum: [PENDING, PAID, FAILED, REFUNDED, PARTIALLY_REFUNDED]
+          example: "PAID"
+        refund_status:
+          type: string
+          enum: [NONE, PARTIAL, FULL]
+          nullable: true
+          example: null
+        total_before_additions:
+          type: number
+          format: float
+          example: 100.00
+        total_tax:
+          type: number
+          format: float
+          example: 8.00
+        total_fee:
+          type: number
+          format: float
+          example: 3.50
+        total_gross:
+          type: number
+          format: float
+          example: 111.50
+        currency:
+          type: string
+          example: "USD"
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:00Z"
+        reserved_until:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-01-15T10:45:00Z"
+        is_expired:
+          type: boolean
+          example: false
+        promo_code:
+          type: string
+          nullable: true
+          example: "EARLYBIRD25"
+
+    OrderDetailResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/OrderSummary'
+            - type: object
+              properties:
+                order_items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/OrderItem'
+                attendees:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/AttendeeDetail'
+                payments:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Payment'
+                refunds:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Refund'
+                address:
+                  $ref: '#/components/schemas/Address'
+                questions:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/QuestionResponse'
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 789
+        order_id:
+          type: integer
+          example: 456
+        product_id:
+          type: integer
+          example: 3
+        product_price_id:
+          type: integer
+          example: 3
+        item_name:
+          type: string
+          example: "General Admission"
+        quantity:
+          type: integer
+          example: 2
+        price:
+          type: number
+          format: float
+          example: 50.00
+        price_before_discount:
+          type: number
+          format: float
+          nullable: true
+          example: 60.00
+        total_before_additions:
+          type: number
+          format: float
+          example: 100.00
+        total_tax:
+          type: number
+          format: float
+          example: 8.00
+        total_service_fee:
+          type: number
+          format: float
+          example: 3.50
+        total_gross:
+          type: number
+          format: float
+          example: 111.50
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 101
+        amount:
+          type: number
+          format: float
+          example: 111.50
+        currency:
+          type: string
+          example: "USD"
+        payment_method:
+          type: string
+          enum: [STRIPE, PAYPAL, BANK_TRANSFER, CASH, COMPED]
+          example: "STRIPE"
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED, CANCELLED]
+          example: "COMPLETED"
+        gateway_transaction_id:
+          type: string
+          example: "pi_1234567890abcdef"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:35:00Z"
+
+    Refund:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 202
+        amount:
+          type: number
+          format: float
+          example: 55.75
+        currency:
+          type: string
+          example: "USD"
+        reason:
+          type: string
+          example: "Customer request"
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED]
+          example: "COMPLETED"
+        gateway_refund_id:
+          type: string
+          example: "re_1234567890abcdef"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-16T14:20:00Z"
+
+    AttendeeDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123
+        public_id:
+          type: string
+          example: "A-ABC123"
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-123-4567"
+        ticket_reference:
+          type: string
+          example: "T-XYZ789"
+        checked_in_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-07-15T09:15:00Z"
+        is_checked_in:
+          type: boolean
+          example: true
+        product_id:
+          type: integer
+          example: 3
+        product_name:
+          type: string
+          example: "General Admission"
+        order_id:
+          type: integer
+          example: 456
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionResponse'
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-15T10:30:00Z"
+
+    QuestionResponse:
+      type: object
+      properties:
+        question_id:
+          type: integer
+          example: 1
+        question:
+          type: string
+          example: "Do you have any dietary restrictions?"
+        answer:
+          type: string
+          example: "Vegetarian"
+        question_type:
+          type: string
+          enum: [TEXT, TEXTAREA, SELECT, CHECKBOX, RADIO, EMAIL, PHONE, NUMBER, DATE]
+          example: "TEXT"
+
+    # Product Management Schemas
+    ProductsListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductDetail'
+
+    ProductDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 3
+        title:
+          type: string
+          example: "General Admission"
+        description:
+          type: string
+          example: "Standard entry to the conference"
+        type:
+          type: string
+          enum: [FREE, PAID, DONATION]
+          example: "PAID"
+        product_type:
+          type: string
+          enum: [GENERAL, VIP, EARLY_BIRD, GROUP]
+          example: "GENERAL"
+        price:
+          type: number
+          format: float
+          example: 50.00
+        max_per_order:
+          type: integer
+          example: 10
+        min_per_order:
+          type: integer
+          example: 1
+        quantity_available:
+          type: integer
+          nullable: true
+          example: 100
+        quantity_sold:
+          type: integer
+          example: 25
+        is_available:
+          type: boolean
+          example: true
+        is_sold_out:
+          type: boolean
+          example: false
+        is_hidden:
+          type: boolean
+          example: false
+        sale_start_date:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-01-01T00:00:00Z"
+        sale_end_date:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-07-14T23:59:59Z"
+        sort_order:
+          type: integer
+          example: 1
+        product_category_id:
+          type: integer
+          example: 1
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductPrice'
+        taxes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tax'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Question'
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+
+    ProductPrice:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 3
+        label:
+          type: string
+          nullable: true
+          example: "Early Bird"
+        price:
+          type: number
+          format: float
+          example: 45.00
+        price_including_taxes_and_fees:
+          type: number
+          format: float
+          example: 48.65
+        sale_start_date:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-01-01T00:00:00Z"
+        sale_end_date:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-03-01T23:59:59Z"
+        is_available:
+          type: boolean
+          example: true
+        is_before_sale_start_date:
+          type: boolean
+          example: false
+        is_after_sale_end_date:
+          type: boolean
+          example: false
+
+    Tax:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Sales Tax"
+        rate:
+          type: number
+          format: float
+          example: 0.08
+        type:
+          type: string
+          enum: [PERCENTAGE, FIXED]
+          example: "PERCENTAGE"
+
+    Question:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: "Dietary Restrictions"
+        description:
+          type: string
+          nullable: true
+          example: "Please let us know about any dietary restrictions"
+        type:
+          type: string
+          enum: [TEXT, TEXTAREA, SELECT, CHECKBOX, RADIO, EMAIL, PHONE, NUMBER, DATE]
+          example: "TEXT"
+        is_required:
+          type: boolean
+          example: true
+        options:
+          type: array
+          items:
+            type: string
+          example: ["Vegetarian", "Vegan", "Gluten-Free", "None"]
+        sort_order:
+          type: integer
+          example: 1
+
+    CreateProductRequest:
+      type: object
+      required: [title, type, product_category_id]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+          example: "VIP Pass"
+        description:
+          type: string
+          example: "Premium access with exclusive benefits"
+        type:
+          type: string
+          enum: [FREE, PAID, DONATION]
+          example: "PAID"
+        product_type:
+          type: string
+          enum: [GENERAL, VIP, EARLY_BIRD, GROUP]
+          default: "GENERAL"
+          example: "VIP"
+        product_category_id:
+          type: integer
+          example: 1
+        price:
+          type: number
+          format: float
+          minimum: 0
+          example: 150.00
+        quantity_available:
+          type: integer
+          nullable: true
+          minimum: 1
+          example: 50
+        max_per_order:
+          type: integer
+          default: 10
+          example: 5
+        min_per_order:
+          type: integer
+          default: 1
+          example: 1
+        is_hidden:
+          type: boolean
+          default: false
+          example: false
+        sale_start_date:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-01-01T00:00:00Z"
+        sale_end_date:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-07-14T23:59:59Z"
+        taxes:
+          type: array
+          items:
+            type: integer
+          example: [1, 2]
+        questions:
+          type: array
+          items:
+            type: integer
+          example: [1, 3]
+
+    UpdateProductRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateProductRequest'
+        - type: object
+          properties:
+            sort_order:
+              type: integer
+              example: 2
+
+    ProductResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ProductDetail'
+
+    ProductDetailResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/ProductDetail'
+            - type: object
+              properties:
+                statistics:
+                  type: object
+                  properties:
+                    total_sold:
+                      type: integer
+                      example: 25
+                    revenue:
+                      type: number
+                      format: float
+                      example: 1250.00
+                    conversion_rate:
+                      type: number
+                      format: float
+                      example: 0.15
+
+    # Attendee Management Schemas
+    AttendeesListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttendeeDetail'
+        links:
+          $ref: '#/components/schemas/PaginationLinks'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    CreateAttendeeRequest:
+      type: object
+      required: [first_name, last_name, email, product_id]
+      properties:
+        first_name:
+          type: string
+          example: "Jane"
+        last_name:
+          type: string
+          example: "Smith"
+        email:
+          type: string
+          format: email
+          example: "jane.smith@example.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-987-6543"
+        product_id:
+          type: integer
+          example: 3
+        order:
+          type: object
+          properties:
+            first_name:
+              type: string
+              example: "Jane"
+            last_name:
+              type: string
+              example: "Smith"
+            email:
+              type: string
+              format: email
+              example: "jane.smith@example.com"
+        questions:
+          type: array
+          items:
+            type: object
+            required: [question_id, answer]
+            properties:
+              question_id:
+                type: integer
+                example: 1
+              answer:
+                type: string
+                example: "No dietary restrictions"
+        notes:
+          type: string
+          nullable: true
+          example: "VIP guest - provide special assistance"
+
+    UpdateAttendeeRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          example: "Jane"
+        last_name:
+          type: string
+          example: "Smith"
+        email:
+          type: string
+          format: email
+          example: "jane.smith@example.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-987-6543"
+        questions:
+          type: array
+          items:
+            type: object
+            properties:
+              question_id:
+                type: integer
+                example: 1
+              answer:
+                type: string
+                example: "Vegetarian"
+        notes:
+          type: string
+          nullable: true
+          example: "Updated dietary preference"
+
+    AttendeeResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AttendeeDetail'
+
+    AttendeeDetailResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/AttendeeDetail'
+            - type: object
+              properties:
+                order:
+                  $ref: '#/components/schemas/OrderSummary'
+                check_ins:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CheckIn'
+                messages:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Message'
+
+    CheckIn:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 501
+        checked_in_at:
+          type: string
+          format: date-time
+          example: "2025-07-15T09:15:00Z"
+        check_in_list_id:
+          type: integer
+          nullable: true
+          example: 1
+        location:
+          type: string
+          nullable: true
+          example: "Main entrance"
+        notes:
+          type: string
+          nullable: true
+          example: "Late arrival"
+        created_by:
+          type: string
+          example: "Registration Staff"
+
+    CheckInResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            attendee:
+              $ref: '#/components/schemas/AttendeeDetail'
+            check_in:
+              $ref: '#/components/schemas/CheckIn'
+        message:
+          type: string
+          example: "Attendee checked in successfully"
+
+    # Export Schemas
+    ExportAttendeesRequest:
+      type: object
+      required: [format]
+      properties:
+        format:
+          type: string
+          enum: [CSV, EXCEL, PDF, JSON]
+          example: "CSV"
+        fields:
+          type: array
+          items:
+            type: string
+          example: ["first_name", "last_name", "email", "ticket_reference", "checked_in_at"]
+        filters:
+          type: object
+          properties:
+            checked_in:
+              type: boolean
+              example: true
+            product_id:
+              type: integer
+              example: 3
+            registration_date_from:
+              type: string
+              format: date
+              example: "2025-01-01"
+            registration_date_to:
+              type: string
+              format: date
+              example: "2025-01-31"
+        include_questions:
+          type: boolean
+          default: false
+          example: true
+
+    ExportOrdersRequest:
+      type: object
+      required: [format]
+      properties:
+        format:
+          type: string
+          enum: [CSV, EXCEL, PDF, JSON]
+          example: "EXCEL"
+        fields:
+          type: array
+          items:
+            type: string
+          example: ["short_id", "first_name", "last_name", "email", "total_gross", "status", "created_at"]
+        filters:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [RESERVED, COMPLETED, CANCELLED, REFUNDED]
+              example: "COMPLETED"
+            payment_status:
+              type: string
+              enum: [PENDING, PAID, FAILED, REFUNDED]
+              example: "PAID"
+            date_from:
+              type: string
+              format: date
+              example: "2025-01-01"
+            date_to:
+              type: string
+              format: date
+              example: "2025-01-31"
+        include_line_items:
+          type: boolean
+          default: false
+          example: true
+        include_attendees:
+          type: boolean
+          default: false
+          example: true
+
+    # Order Management Schemas
+    UpdateOrderRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-123-4567"
+        address:
+          $ref: '#/components/schemas/Address'
+        notes:
+          type: string
+          nullable: true
+          example: "Special VIP treatment requested"
+
+    OrderResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/OrderSummary'
+
+    OrderCancellationResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/OrderSummary'
+            - type: object
+              properties:
+                cancellation:
+                  type: object
+                  properties:
+                    reason:
+                      type: string
+                      example: "Customer request"
+                    refund_amount:
+                      type: number
+                      format: float
+                      example: 111.50
+                    cancelled_at:
+                      type: string
+                      format: date-time
+                      example: "2025-01-16T15:30:00Z"
+
+    RefundOrderRequest:
+      type: object
+      required: [amount, reason]
+      properties:
+        amount:
+          type: number
+          format: float
+          minimum: 0.01
+          example: 55.75
+        reason:
+          type: string
+          example: "Partial refund for cancelled session"
+        refund_fees:
+          type: boolean
+          default: false
+          example: true
+        notify_customer:
+          type: boolean
+          default: true
+          example: true
+
+    RefundResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            refund:
+              $ref: '#/components/schemas/Refund'
+            order:
+              $ref: '#/components/schemas/OrderSummary'
+        message:
+          type: string
+          example: "Refund processed successfully"
+
+    # Message and Communication Schemas
+    SendMessageRequest:
+      type: object
+      required: [subject, message]
+      properties:
+        subject:
+          type: string
+          maxLength: 255
+          example: "Important Event Update"
+        message:
+          type: string
+          example: "Please note the change in venue location..."
+        delivery_method:
+          type: string
+          enum: [EMAIL, SMS, PUSH]
+          default: "EMAIL"
+          example: "EMAIL"
+        send_immediately:
+          type: boolean
+          default: true
+          example: true
+        scheduled_for:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-07-10T09:00:00Z"
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 301
+        subject:
+          type: string
+          example: "Event Reminder"
+        message:
+          type: string
+          example: "Don't forget about tomorrow's conference!"
+        delivery_method:
+          type: string
+          enum: [EMAIL, SMS, PUSH]
+          example: "EMAIL"
+        status:
+          type: string
+          enum: [DRAFT, QUEUED, SENT, FAILED]
+          example: "SENT"
+        recipient_count:
+          type: integer
+          example: 150
+        delivered_count:
+          type: integer
+          example: 147
+        opened_count:
+          type: integer
+          example: 89
+        clicked_count:
+          type: integer
+          example: 23
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-07-14T10:00:00Z"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-07-14T09:30:00Z"
+
+    MessageResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Message'
+        message:
+          type: string
+          example: "Message sent successfully"
+
+    # Public API Schemas
+    PublicEventResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: integer
+              example: 1
+            title:
+              type: string
+              example: "Tech Conference 2025"
+            description:
+              type: string
+              example: "<p>Join us for an amazing tech conference</p>"
+            description_preview:
+              type: string
+              example: "Join us for an amazing tech conference"
+            start_date:
+              type: string
+              format: date-time
+              example: "2025-07-15T09:00:00Z"
+            end_date:
+              type: string
+              format: date-time
+              example: "2025-07-15T18:00:00Z"
+            timezone:
+              type: string
+              example: "America/New_York"
+            currency:
+              type: string
+              example: "USD"
+            location_details:
+              type: string
+              nullable: true
+              example: "123 Conference Center, Tech City"
+            is_online_event:
+              type: boolean
+              example: false
+            online_event_connection_details:
+              type: string
+              nullable: true
+              example: null
+            images:
+              type: array
+              items:
+                type: string
+              example: ["https://example.com/event-banner.jpg"]
+            organizer:
+              $ref: '#/components/schemas/Organizer'
+            settings:
+              type: object
+              properties:
+                continue_button_text:
+                  type: string
+                  example: "Register Now"
+                support_email:
+                  type: string
+                  format: email
+                  example: "support@techconf.com"
+                required_attendee_details:
+                  type: boolean
+                  example: true
+
+    PublicEventProductsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: integer
+              example: 1
+            title:
+              type: string
+              example: "Tech Conference 2025"
+            currency:
+              type: string
+              example: "USD"
+            product_categories:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: "Conference Tickets"
+                  description:
+                    type: string
+                    nullable: true
+                    example: "Choose your conference experience"
+                  is_hidden:
+                    type: boolean
+                    example: false
+                  products:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/ProductDetail'
+                        - type: object
+                          properties:
+                            is_before_sale_start_date:
+                              type: boolean
+                              example: false
+                            is_after_sale_end_date:
+                              type: boolean
+                              example: false
+
+    CreatePublicOrderResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            short_id:
+              type: string
+              example: "o_4WWzp2nNQyjjI"
+              description: "Use this ID to complete the order"
+            public_id:
+              type: string
+              example: "O-GAIAVHF"
+            status:
+              type: string
+              example: "RESERVED"
+            total_before_additions:
+              type: number
+              format: float
+              example: 100.00
+            total_tax:
+              type: number
+              format: float
+              example: 8.00
+            total_fee:
+              type: number
+              format: float
+              example: 3.50
+            total_gross:
+              type: number
+              format: float
+              example: 111.50
+            currency:
+              type: string
+              example: "USD"
+            reserved_until:
+              type: string
+              format: date-time
+              example: "2025-01-15T10:45:00Z"
+            is_expired:
+              type: boolean
+              example: false
+            is_payment_required:
+              type: boolean
+              example: true
+            order_items:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrderItem'
+            session_identifier:
+              type: string
+              example: "184dae31bbd792b5400c67772597627c08bc69cd"
+
+    CompletePublicOrderResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            short_id:
+              type: string
+              example: "o_4WWzp2nNQyjjI"
+            public_id:
+              type: string
+              example: "O-GAIAVHF"
+            status:
+              type: string
+              example: "COMPLETED"
+            payment_status:
+              type: string
+              example: "PAID"
+            total_gross:
+              type: number
+              format: float
+              example: 111.50
+            currency:
+              type: string
+              example: "USD"
+            first_name:
+              type: string
+              example: "John"
+            last_name:
+              type: string
+              example: "Doe"
+            email:
+              type: string
+              format: email
+              example: "john.doe@example.com"
+            attendees:
+              type: array
+              items:
+                type: object
+                properties:
+                  public_id:
+                    type: string
+                    example: "A-XYZ789"
+                  first_name:
+                    type: string
+                    example: "John"
+                  last_name:
+                    type: string
+                    example: "Doe"
+                  email:
+                    type: string
+                    format: email
+                    example: "john.doe@example.com"
+                  ticket_reference:
+                    type: string
+                    example: "T-ABC123"
+                  product_name:
+                    type: string
+                    example: "General Admission"
+            confirmation_url:
+              type: string
+              example: "https://localhost:8443/event/1/order/o_4WWzp2nNQyjjI"
+
+    PublicOrderResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/OrderSummary'
+            - type: object
+              properties:
+                order_items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/OrderItem'
+                attendees:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/AttendeeDetail'
+
+    # User Management Schemas
+    UserProfileResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/User'
+            - type: object
+              properties:
+                accounts:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Account'
+                preferences:
+                  type: object
+                  properties:
+                    notifications:
+                      type: object
+                      properties:
+                        email_marketing:
+                          type: boolean
+                          example: true
+                        sms_notifications:
+                          type: boolean
+                          example: false
+                    privacy:
+                      type: object
+                      properties:
+                        show_profile:
+                          type: boolean
+                          example: false
+
+    UpdateUserProfileRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-123-4567"
+        timezone:
+          type: string
+          example: "America/New_York"
+        locale:
+          type: string
+          example: "en"
+        current_password:
+          type: string
+          description: "Required when changing email or password"
+          example: "currentpassword123"
+        new_password:
+          type: string
+          minLength: 8
+          description: "Optional - only if changing password"
+          example: "newpassword123"
+        new_password_confirmation:
+          type: string
+          description: "Required if changing password"
+          example: "newpassword123"
+        preferences:
+          type: object
+          properties:
+            notifications:
+              type: object
+              properties:
+                email_marketing:
+                  type: boolean
+                  example: true
+                sms_notifications:
+                  type: boolean
+                  example: false
+
+    UsersListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/User'
+              - type: object
+                properties:
+                  role:
+                    type: string
+                    enum: [ADMIN, ORGANIZER, USER]
+                    example: "ORGANIZER"
+                  status:
+                    type: string
+                    enum: [ACTIVE, INACTIVE, SUSPENDED]
+                    example: "ACTIVE"
+                  last_login_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    example: "2025-01-14T16:45:00Z"
+        links:
+          $ref: '#/components/schemas/PaginationLinks'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    CreateUserRequest:
+      type: object
+      required: [first_name, last_name, email, role]
+      properties:
+        first_name:
+          type: string
+          example: "Jane"
+        last_name:
+          type: string
+          example: "Smith"
+        email:
+          type: string
+          format: email
+          example: "jane.smith@example.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-987-6543"
+        role:
+          type: string
+          enum: [ADMIN, ORGANIZER, USER]
+          example: "ORGANIZER"
+        timezone:
+          type: string
+          example: "America/New_York"
+        locale:
+          type: string
+          example: "en"
+        send_invitation:
+          type: boolean
+          default: true
+          example: true
+
+    UpdateUserRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateUserRequest'
+        - type: object
+          properties:
+            status:
+              type: string
+              enum: [ACTIVE, INACTIVE, SUSPENDED]
+              example: "ACTIVE"
+            password:
+              type: string
+              minLength: 8
+              description: "Optional - generates random password if not provided"
+              example: "temporarypassword123"
+
+    UserResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+
+    UserDetailResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/User'
+            - type: object
+              properties:
+                role:
+                  type: string
+                  enum: [ADMIN, ORGANIZER, USER]
+                  example: "ORGANIZER"
+                status:
+                  type: string
+                  enum: [ACTIVE, INACTIVE, SUSPENDED]
+                  example: "ACTIVE"
+                last_login_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  example: "2025-01-14T16:45:00Z"
+                events_created:
+                  type: integer
+                  example: 5
+                total_revenue:
+                  type: number
+                  format: float
+                  example: 15750.00
+                accounts:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Account'
+
+    # Additional Utility Schemas
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+        refresh_token:
+          type: string
+          example: "def50200abc123..."
+        token_type:
+          type: string
+          example: "Bearer"
+        expires_in:
+          type: integer
+          example: 3600
+
+    UpdateEventRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateEventRequest'
+        - type: object
+          properties:
+            slug:
+              type: string
+              pattern: '^[a-z0-9-]+$'
+              maxLength: 255
+              example: "tech-conference-2025-updated"
+
+    DuplicateEventRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+          example: "Tech Conference 2026"
+        duplicate_products:
+          type: boolean
+          default: true
+          example: true
+        duplicate_questions:
+          type: boolean
+          default: true
+          example: true
+        duplicate_webhooks:
+          type: boolean
+          default: false
+          example: false
+        duplicate_images:
+          type: boolean
+          default: true
+          example: true
+        start_date:
+          type: string
+          format: date-time
+          example: "2026-07-15T09:00:00Z"
+                 end_date:
+           type: string
+           format: date-time
+           example: "2026-07-15T18:00:00Z"
+
+  # =============================================================================
+  # ADDITIONAL MISSING ROUTES
+  # =============================================================================
+
+  # WEBHOOK MANAGEMENT
+  /events/{event_id}/webhooks:
+    get:
+      tags: [Webhooks]
+      summary: List Event Webhooks
+      description: |
+        Retrieve all webhook endpoints configured for an event.
+        
+        **Webhook Types:**
+        - Order creation and completion
+        - Payment processing events
+        - Attendee check-ins
+        - Event status changes
+        - Refund notifications
+        
+        **Security Features:**
+        - HMAC signature verification
+        - Retry logic with exponential backoff
+        - Delivery status tracking
+        - Event filtering and targeting
+      operationId: getEventWebhooks
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Webhooks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhooksListResponse'
+
+    post:
+      tags: [Webhooks]
+      summary: Create Event Webhook
+      description: |
+        Create a new webhook endpoint for event notifications.
+        
+        **Configuration Options:**
+        - Target URL and HTTP method
+        - Event types to subscribe to
+        - Custom headers and authentication
+        - Retry and timeout settings
+        - Active/inactive status
+      operationId: createEventWebhook
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookRequest'
+      responses:
+        '201':
+          description: Webhook created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+
+  /events/{event_id}/webhooks/{webhook_id}:
+    get:
+      tags: [Webhooks]
+      summary: Get Webhook Details
+      description: Retrieve detailed information for a specific webhook including delivery history.
+      operationId: getEventWebhook
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 123
+      responses:
+        '200':
+          description: Webhook details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDetailResponse'
+
+    put:
+      tags: [Webhooks]
+      summary: Update Webhook
+      description: Update webhook configuration and settings.
+      operationId: updateEventWebhook
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWebhookRequest'
+      responses:
+        '200':
+          description: Webhook updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+
+    delete:
+      tags: [Webhooks]
+      summary: Delete Webhook
+      description: Remove a webhook endpoint from the event.
+      operationId: deleteEventWebhook
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 123
+      responses:
+        '204':
+          description: Webhook deleted successfully
+
+  # CHECK-IN LISTS MANAGEMENT
+  /events/{event_id}/check-in-lists:
+    get:
+      tags: [Check-in Lists]
+      summary: List Check-in Lists
+      description: |
+        Retrieve all check-in lists for an event.
+        
+        **Check-in List Types:**
+        - Main event entrance
+        - Session-specific check-ins
+        - VIP or special area access
+        - Workshop or breakout sessions
+        - Meal service check-ins
+        
+        **Features:**
+        - Real-time attendance tracking
+        - Capacity management
+        - Access control integration
+        - Mobile app synchronization
+      operationId: getCheckInLists
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Check-in lists retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInListsResponse'
+
+    post:
+      tags: [Check-in Lists]
+      summary: Create Check-in List
+      description: |
+        Create a new check-in list for the event.
+        
+        **Configuration Options:**
+        - List name and description
+        - Associated products/tickets
+        - Check-in time restrictions
+        - Capacity limits
+        - Access permissions
+      operationId: createCheckInList
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckInListRequest'
+      responses:
+        '201':
+          description: Check-in list created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckInListResponse'
+
+  # PROMOTIONAL CODES
+  /events/{event_id}/promo-codes:
+    get:
+      tags: [Promotional Codes]
+      summary: List Promotional Codes
+      description: |
+        Retrieve all promotional codes for an event.
+        
+        **Promo Code Types:**
+        - Percentage discounts
+        - Fixed amount discounts
+        - Free tickets/products
+        - BOGO (Buy One Get One)
+        - Early bird specials
+        
+        **Management Features:**
+        - Usage limits and tracking
+        - Expiration dates
+        - Product-specific codes
+        - Customer segment targeting
+        - Affiliate tracking
+      operationId: getPromoCodes
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: include_usage
+          in: query
+          description: Include usage statistics
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Promotional codes retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCodesListResponse'
+
+    post:
+      tags: [Promotional Codes]
+      summary: Create Promotional Code
+      description: |
+        Create a new promotional code for the event.
+        
+        **Discount Types:**
+        - PERCENTAGE: Percentage off total
+        - FIXED: Fixed amount discount
+        - FREE: Free products
+        - BOGO: Buy one get one deals
+        
+        **Restrictions:**
+        - Usage limits per code
+        - Usage limits per customer
+        - Product applicability
+        - Date/time restrictions
+        - Minimum order requirements
+      operationId: createPromoCode
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePromoCodeRequest'
+      responses:
+        '201':
+          description: Promotional code created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCodeResponse'
+
+  # REPORTS AND ANALYTICS
+  /events/{event_id}/reports/sales:
+    get:
+      tags: [Reports]
+      summary: Event Sales Report
+      description: |
+        Generate comprehensive sales reports for an event.
+        
+        **Report Metrics:**
+        - Revenue by product and time period
+        - Sales velocity and trends
+        - Payment method breakdown
+        - Refund and cancellation analysis
+        - Promotional code effectiveness
+        
+        **Time Filters:**
+        - Daily, weekly, monthly breakdowns
+        - Custom date ranges
+        - Real-time vs. historical data
+        - Comparative analysis
+      operationId: getEventSalesReport
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: date_from
+          in: query
+          description: Report start date
+          schema:
+            type: string
+            format: date
+            example: "2025-01-01"
+        - name: date_to
+          in: query
+          description: Report end date
+          schema:
+            type: string
+            format: date
+            example: "2025-01-31"
+        - name: group_by
+          in: query
+          description: Group results by time period
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+      responses:
+        '200':
+          description: Sales report generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SalesReportResponse'
+
+  /events/{event_id}/reports/attendees:
+    get:
+      tags: [Reports]
+      summary: Event Attendee Report
+      description: |
+        Generate detailed attendee reports and analytics.
+        
+        **Report Contents:**
+        - Registration timeline and patterns
+        - Check-in rates and timing
+        - Attendee demographics
+        - Product preference analysis
+        - Geographic distribution
+        
+        **Insights:**
+        - Peak registration periods
+        - Drop-off points in checkout
+        - Most popular products
+        - Customer journey analysis
+      operationId: getEventAttendeeReport
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: include_demographics
+          in: query
+          description: Include demographic analysis
+          schema:
+            type: boolean
+            default: false
+        - name: include_geographic
+          in: query
+          description: Include geographic distribution
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Attendee report generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendeeReportResponse'
+
+  # ORGANIZER MANAGEMENT
+  /organizers:
+    get:
+      tags: [Organizers]
+      summary: List Organizers
+      description: |
+        Retrieve all organizers within the account.
+        
+        **Organizer Information:**
+        - Contact details and profiles
+        - Event management history
+        - Performance metrics
+        - Team and role assignments
+        - Social media and branding
+      operationId: getOrganizers
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200':
+          description: Organizers retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizersListResponse'
+
+    post:
+      tags: [Organizers]
+      summary: Create Organizer
+      description: |
+        Create a new organizer profile within the account.
+        
+        **Required Information:**
+        - Basic contact information
+        - Organization details
+        - Role and permissions
+        - Branding and social media
+        
+        **Features:**
+        - Multi-organizer event management
+        - Branded communication templates
+        - Performance tracking
+        - Team collaboration tools
+      operationId: createOrganizer
+      security:
+        - JwtAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganizerRequest'
+      responses:
+        '201':
+          description: Organizer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizerResponse'
+
+  # PRODUCT CATEGORIES
+  /events/{event_id}/product-categories:
+    get:
+      tags: [Product Categories]
+      summary: List Product Categories
+      description: |
+        Retrieve all product categories for an event.
+        
+        **Category Features:**
+        - Hierarchical organization
+        - Custom ordering and display
+        - Visibility controls
+        - Description and branding
+        - Product grouping logic
+      operationId: getProductCategories
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - name: include_products
+          in: query
+          description: Include products in each category
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Product categories retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductCategoriesListResponse'
+
+    post:
+      tags: [Product Categories]
+      summary: Create Product Category
+      description: |
+        Create a new product category for organizing event products.
+        
+        **Category Configuration:**
+        - Name and description
+        - Display order and hierarchy
+        - Visibility settings
+        - Associated products
+        - Custom styling options
+      operationId: createProductCategory
+      security:
+        - JwtAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductCategoryRequest'
+      responses:
+        '201':
+          description: Product category created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductCategoryResponse'
+
+  # TAX MANAGEMENT
+  /taxes:
+    get:
+      tags: [Taxes]
+      summary: List Tax Configurations
+      description: |
+        Retrieve all tax configurations for the account.
+        
+        **Tax Types:**
+        - Sales tax (state/regional)
+        - VAT (Value Added Tax)
+        - GST (Goods and Services Tax)
+        - Custom tax rates
+        - Service fees and surcharges
+        
+        **Features:**
+        - Geographic tax rules
+        - Product-specific tax rates
+        - Automatic tax calculation
+        - Tax reporting and compliance
+        - Integration with accounting systems
+      operationId: getTaxes
+      security:
+        - JwtAuth: []
+      responses:
+        '200':
+          description: Tax configurations retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxesListResponse'
+
+    post:
+      tags: [Taxes]
+      summary: Create Tax Configuration
+      description: |
+        Create a new tax configuration for events.
+        
+        **Tax Configuration:**
+        - Tax name and rate
+        - Applicable regions/countries
+        - Product type restrictions
+        - Calculation method
+        - Compliance settings
+      operationId: createTax
+      security:
+        - JwtAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaxRequest'
+      responses:
+        '201':
+          description: Tax configuration created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxResponse'
+
+  # ACCOUNT CONFIGURATION
+  /account/settings:
+    get:
+      tags: [Account Settings]
+      summary: Get Account Settings
+      description: |
+        Retrieve current account configuration and settings.
+        
+        **Settings Categories:**
+        - General account information
+        - Payment processing configuration
+        - Email and communication settings
+        - Branding and customization
+        - Security and privacy options
+        - Integration settings
+        
+        **Features:**
+        - Multi-currency support
+        - Timezone and localization
+        - Custom domain settings
+        - API access configuration
+        - Compliance and legal settings
+      operationId: getAccountSettings
+      security:
+        - JwtAuth: []
+      responses:
+        '200':
+          description: Account settings retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSettingsResponse'
+
+    put:
+      tags: [Account Settings]
+      summary: Update Account Settings
+      description: |
+        Update account configuration and settings.
+        
+        **Updatable Settings:**
+        - Company information and branding
+        - Payment processing preferences
+        - Communication defaults
+        - Security policies
+        - Integration configurations
+        
+        **Validation:**
+        - Required field validation
+        - Business rule enforcement
+        - Security compliance checks
+        - Integration testing
+      operationId: updateAccountSettings
+      security:
+        - JwtAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAccountSettingsRequest'
+      responses:
+        '200':
+          description: Account settings updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSettingsResponse'
+
+    # =============================================================================
+    # ADDITIONAL SCHEMAS FOR NEW ROUTES
+    # =============================================================================
+
+    # Webhook Schemas
+    WebhooksListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Webhook'
+
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123
+        name:
+          type: string
+          example: "Order Notifications"
+        url:
+          type: string
+          format: uri
+          example: "https://api.myapp.com/webhooks/orders"
+        method:
+          type: string
+          enum: [POST, PUT, PATCH]
+          default: POST
+          example: "POST"
+        events:
+          type: array
+          items:
+            type: string
+          example: ["order.created", "order.completed", "payment.received"]
+        is_active:
+          type: boolean
+          example: true
+        secret:
+          type: string
+          nullable: true
+          example: "whsec_1234567890abcdef"
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            "Authorization": "Bearer token123"
+            "Content-Type": "application/json"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+        last_successful_delivery:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-01-15T10:30:00Z"
+
+    CreateWebhookRequest:
+      type: object
+      required: [name, url, events]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          example: "Order Notifications"
+        url:
+          type: string
+          format: uri
+          example: "https://api.myapp.com/webhooks/orders"
+        method:
+          type: string
+          enum: [POST, PUT, PATCH]
+          default: POST
+          example: "POST"
+        events:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [
+              "order.created", "order.completed", "order.cancelled",
+              "payment.received", "payment.failed", "refund.processed",
+              "attendee.checked_in", "event.published", "event.updated"
+            ]
+          example: ["order.created", "order.completed"]
+        is_active:
+          type: boolean
+          default: true
+          example: true
+        secret:
+          type: string
+          nullable: true
+          description: "Secret for HMAC signature verification"
+          example: "your_secret_key"
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            "Authorization": "Bearer token123"
+
+    UpdateWebhookRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateWebhookRequest'
+
+    WebhookResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Webhook'
+
+    WebhookDetailResponse:
+      type: object
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/Webhook'
+            - type: object
+              properties:
+                delivery_statistics:
+                  type: object
+                  properties:
+                    total_deliveries:
+                      type: integer
+                      example: 250
+                    successful_deliveries:
+                      type: integer
+                      example: 248
+                    failed_deliveries:
+                      type: integer
+                      example: 2
+                    success_rate:
+                      type: number
+                      format: float
+                      example: 0.992
+                recent_deliveries:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1001
+                      event_type:
+                        type: string
+                        example: "order.completed"
+                      status:
+                        type: string
+                        enum: [SUCCESS, FAILED, PENDING]
+                        example: "SUCCESS"
+                      response_code:
+                        type: integer
+                        example: 200
+                      delivered_at:
+                        type: string
+                        format: date-time
+                        example: "2025-01-15T10:30:00Z"
+
+    # Check-in List Schemas
+    CheckInListsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckInListDetail'
+
+    CheckInListDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Main Event Entrance"
+        description:
+          type: string
+          nullable: true
+          example: "Primary check-in for all attendees"
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-07-15T18:00:00Z"
+        is_active:
+          type: boolean
+          example: true
+        attendees_count:
+          type: integer
+          example: 150
+        checked_in_count:
+          type: integer
+          example: 89
+        products:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                example: 3
+              title:
+                type: string
+                example: "General Admission"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+
+    CreateCheckInListRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          example: "VIP Lounge Access"
+        description:
+          type: string
+          nullable: true
+          example: "Check-in for VIP attendees only"
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-07-15T18:00:00Z"
+        product_ids:
+          type: array
+          items:
+            type: integer
+          example: [3, 4]
+        is_active:
+          type: boolean
+          default: true
+          example: true
+
+    CheckInListResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CheckInListDetail'
+
+    # Promotional Code Schemas
+    PromoCodesListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromoCodeDetail'
+
+    PromoCodeDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        code:
+          type: string
+          example: "EARLYBIRD25"
+        type:
+          type: string
+          enum: [PERCENTAGE, FIXED, FREE, BOGO]
+          example: "PERCENTAGE"
+        value:
+          type: number
+          format: float
+          example: 25.00
+        description:
+          type: string
+          nullable: true
+          example: "25% off for early registrations"
+        usage_limit:
+          type: integer
+          nullable: true
+          example: 100
+        usage_limit_per_person:
+          type: integer
+          nullable: true
+          example: 1
+        usage_count:
+          type: integer
+          example: 45
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-03-01T23:59:59Z"
+        is_active:
+          type: boolean
+          example: true
+        applicable_products:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                example: 3
+              title:
+                type: string
+                example: "General Admission"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+
+    CreatePromoCodeRequest:
+      type: object
+      required: [code, type, value]
+      properties:
+        code:
+          type: string
+          maxLength: 50
+          pattern: '^[A-Z0-9_-]+$'
+          example: "SAVE20"
+        type:
+          type: string
+          enum: [PERCENTAGE, FIXED, FREE, BOGO]
+          example: "PERCENTAGE"
+        value:
+          type: number
+          format: float
+          minimum: 0
+          example: 20.00
+        description:
+          type: string
+          nullable: true
+          maxLength: 255
+          example: "20% discount for newsletter subscribers"
+        usage_limit:
+          type: integer
+          nullable: true
+          minimum: 1
+          example: 50
+        usage_limit_per_person:
+          type: integer
+          nullable: true
+          minimum: 1
+          example: 1
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-06-01T23:59:59Z"
+        is_active:
+          type: boolean
+          default: true
+          example: true
+        applicable_product_ids:
+          type: array
+          items:
+            type: integer
+          example: [3, 4]
+        minimum_order_amount:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+          example: 100.00
+
+    PromoCodeResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/PromoCodeDetail'
+
+    # Report Schemas
+    SalesReportResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            summary:
+              type: object
+              properties:
+                total_revenue:
+                  type: number
+                  format: float
+                  example: 15750.00
+                total_orders:
+                  type: integer
+                  example: 315
+                total_refunds:
+                  type: number
+                  format: float
+                  example: 500.00
+                average_order_value:
+                  type: number
+                  format: float
+                  example: 50.00
+            time_series:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                    example: "2025-01-15"
+                  revenue:
+                    type: number
+                    format: float
+                    example: 1250.00
+                  orders:
+                    type: integer
+                    example: 25
+                  refunds:
+                    type: number
+                    format: float
+                    example: 50.00
+            products:
+              type: array
+              items:
+                type: object
+                properties:
+                  product_id:
+                    type: integer
+                    example: 3
+                  product_name:
+                    type: string
+                    example: "General Admission"
+                  quantity_sold:
+                    type: integer
+                    example: 150
+                  revenue:
+                    type: number
+                    format: float
+                    example: 7500.00
+            payment_methods:
+              type: array
+              items:
+                type: object
+                properties:
+                  method:
+                    type: string
+                    example: "STRIPE"
+                  count:
+                    type: integer
+                    example: 280
+                  revenue:
+                    type: number
+                    format: float
+                    example: 14000.00
+
+    AttendeeReportResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            summary:
+              type: object
+              properties:
+                total_attendees:
+                  type: integer
+                  example: 295
+                checked_in_count:
+                  type: integer
+                  example: 267
+                check_in_rate:
+                  type: number
+                  format: float
+                  example: 0.905
+            registration_timeline:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                    example: "2025-01-15"
+                  registrations:
+                    type: integer
+                    example: 15
+                  cumulative:
+                    type: integer
+                    example: 145
+            demographics:
+              type: object
+              properties:
+                by_product:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_name:
+                        type: string
+                        example: "General Admission"
+                      count:
+                        type: integer
+                        example: 200
+                by_registration_source:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      source:
+                        type: string
+                        example: "Website"
+                      count:
+                        type: integer
+                        example: 180
+
+    # Organizer Schemas
+    OrganizersListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizerDetail'
+        links:
+          $ref: '#/components/schemas/PaginationLinks'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    OrganizerDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Tech Events Inc"
+        email:
+          type: string
+          format: email
+          example: "contact@techevents.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-987-6543"
+        website:
+          type: string
+          nullable: true
+          example: "https://techevents.com"
+        description:
+          type: string
+          nullable: true
+          example: "Leading tech event organizer"
+        address:
+          $ref: '#/components/schemas/Address'
+        social_media:
+          type: object
+          properties:
+            facebook:
+              type: string
+              nullable: true
+              example: "https://facebook.com/techevents"
+            twitter:
+              type: string
+              nullable: true
+              example: "https://twitter.com/techevents"
+            linkedin:
+              type: string
+              nullable: true
+              example: "https://linkedin.com/company/techevents"
+        events_count:
+          type: integer
+          example: 12
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+
+    CreateOrganizerRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          example: "Innovation Summit Organizers"
+        email:
+          type: string
+          format: email
+          example: "contact@innovationsummit.com"
+        phone:
+          type: string
+          nullable: true
+          example: "+1-555-123-4567"
+        website:
+          type: string
+          nullable: true
+          format: uri
+          example: "https://innovationsummit.com"
+        description:
+          type: string
+          nullable: true
+          example: "Premier technology and innovation event organizer"
+        address:
+          $ref: '#/components/schemas/Address'
+        social_media:
+          type: object
+          properties:
+            facebook:
+              type: string
+              nullable: true
+              format: uri
+              example: "https://facebook.com/innovationsummit"
+            twitter:
+              type: string
+              nullable: true
+              format: uri
+              example: "https://twitter.com/innovationsummit"
+            linkedin:
+              type: string
+              nullable: true
+              format: uri
+              example: "https://linkedin.com/company/innovationsummit"
+
+    OrganizerResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/OrganizerDetail'
+
+    # Product Category Schemas
+    ProductCategoriesListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductCategoryDetail'
+
+    ProductCategoryDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Conference Tickets"
+        description:
+          type: string
+          nullable: true
+          example: "Choose your conference experience"
+        sort_order:
+          type: integer
+          example: 1
+        is_hidden:
+          type: boolean
+          example: false
+        products_count:
+          type: integer
+          example: 3
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductDetail'
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+
+    CreateProductCategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          example: "Workshop Passes"
+        description:
+          type: string
+          nullable: true
+          example: "Access to specialized workshops and training sessions"
+        sort_order:
+          type: integer
+          default: 1
+          example: 2
+        is_hidden:
+          type: boolean
+          default: false
+          example: false
+
+    ProductCategoryResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/ProductCategoryDetail'
+
+    # Tax Schemas
+    TaxesListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxDetail'
+
+    TaxDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "California Sales Tax"
+        rate:
+          type: number
+          format: float
+          example: 0.0875
+        type:
+          type: string
+          enum: [PERCENTAGE, FIXED]
+          example: "PERCENTAGE"
+        regions:
+          type: array
+          items:
+            type: string
+          example: ["CA", "California", "United States"]
+        is_inclusive:
+          type: boolean
+          example: false
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-01-01T00:00:00Z"
+
+    CreateTaxRequest:
+      type: object
+      required: [name, rate, type]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          example: "EU VAT"
+        rate:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.20
+        type:
+          type: string
+          enum: [PERCENTAGE, FIXED]
+          example: "PERCENTAGE"
+        regions:
+          type: array
+          items:
+            type: string
+          example: ["EU", "Europe"]
+        is_inclusive:
+          type: boolean
+          default: false
+          example: false
+        is_active:
+          type: boolean
+          default: true
+          example: true
+
+    TaxResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/TaxDetail'
+
+    # Account Settings Schemas
+    AccountSettingsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            general:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "ACME Events"
+                currency:
+                  type: string
+                  example: "USD"
+                timezone:
+                  type: string
+                  example: "America/New_York"
+                language:
+                  type: string
+                  example: "en"
+                date_format:
+                  type: string
+                  example: "MM/DD/YYYY"
+            payment:
+              type: object
+              properties:
+                stripe_connected:
+                  type: boolean
+                  example: true
+                paypal_connected:
+                  type: boolean
+                  example: false
+                processing_fees:
+                  type: object
+                  properties:
+                    stripe_rate:
+                      type: number
+                      format: float
+                      example: 0.029
+                    fixed_fee:
+                      type: number
+                      format: float
+                      example: 0.30
+            branding:
+              type: object
+              properties:
+                logo_url:
+                  type: string
+                  nullable: true
+                  example: "https://example.com/logo.png"
+                primary_color:
+                  type: string
+                  example: "#007bff"
+                secondary_color:
+                  type: string
+                  example: "#6c757d"
+                custom_domain:
+                  type: string
+                  nullable: true
+                  example: "events.mycompany.com"
+            email:
+              type: object
+              properties:
+                from_name:
+                  type: string
+                  example: "ACME Events"
+                from_email:
+                  type: string
+                  format: email
+                  example: "noreply@acmeevents.com"
+                reply_to_email:
+                  type: string
+                  format: email
+                  example: "support@acmeevents.com"
+
+    UpdateAccountSettingsRequest:
+      type: object
+      properties:
+        general:
+          type: object
+          properties:
+            name:
+              type: string
+              maxLength: 255
+              example: "ACME Events Corporation"
+            timezone:
+              type: string
+              example: "America/Los_Angeles"
+            language:
+              type: string
+              example: "en"
+            date_format:
+              type: string
+              enum: ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"]
+              example: "DD/MM/YYYY"
+        branding:
+          type: object
+          properties:
+            primary_color:
+              type: string
+              pattern: '^#[0-9A-Fa-f]{6}$'
+              example: "#28a745"
+            secondary_color:
+              type: string
+              pattern: '^#[0-9A-Fa-f]{6}$'
+              example: "#6c757d"
+            custom_domain:
+              type: string
+              nullable: true
+              format: hostname
+              example: "events.mycompany.com"
+        email:
+          type: object
+          properties:
+            from_name:
+              type: string
+              maxLength: 255
+              example: "ACME Events"
+            from_email:
+              type: string
+              format: email
+              example: "noreply@acmeevents.com"
+            reply_to_email:
+              type: string
+              format: email
+              example: "support@acmeevents.com"
